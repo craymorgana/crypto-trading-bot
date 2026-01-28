@@ -1,0 +1,23 @@
+{
+  "name": "crypto-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node start.js",
+    "bot": "node bot.js",
+    "dashboard": "node dashboard.js",
+    "test": "node test-analysis.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "candlestick": "^1.0.2",
+    "ccxt": "^4.5.34",
+    "dotenv": "^17.2.3",
+    "express": "^4.22.1",
+    "technicalindicators": "^3.1.0"
+  }
+}
