@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node start.js",
-    "bot": "node bot.js",
-    "dashboard": "node dashboard.js",
-    "test": "node test-analysis.js"
+    "start": "node server/start.js",
+    "bot": "node server/bot.js",
+    "dashboard": "node server/dashboard.js",
+    "test": "node server/test-analysis.js"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +18,8 @@
     "ccxt": "^4.5.34",
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
-    "technicalindicators": "^3.1.0"
+    "livereload": "^0.10.3",
+    "technicalindicators": "^3.1.0",
+    "ws": "^8.19.0"
   }
 }

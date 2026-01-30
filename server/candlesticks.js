@@ -23,11 +23,7 @@ function analyzeCandlesticks(ohlcv) {
     const latestMatches = matches.filter(m => m.index === lastIndex);
 
     const lastPatternMatch = matches.find(m => m.index === lastIndex);
-if (lastPatternMatch) {
-        console.log(`✅ MATCH FOUND at close: [${lastPatternMatch.pattern.toUpperCase()}]`);
-    } else {
-        console.log(`⚪ NO MATCH: The last candle did not form a recognized pattern.`);
-    }
+    
     if (latestMatches.length === 0) {
         return { signal: 'NEUTRAL', confidence: 0, pattern: 'None' };
     }

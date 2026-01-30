@@ -43,17 +43,30 @@ function logSignal(signalData) {
     try {
         const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
         
-        data.signals.push({
-            timestamp: new Date(),
-            symbol: signalData.symbol,
-            signal: signalData.signal,
-            confidence: signalData.confidence,
-            pattern: signalData.pattern,
-            indicators: signalData.indicators,
-            fibonacci: signalData.fibonacci,
-            harmonics: signalData.harmonics,
-            meetsThreshold: signalData.meetsThreshold
+        // Create a timestamp key for deduplication (rounded to nearest second)
+        const signalTimestamp = new Date();
+        const timestampKey = signalData.symbol + '_' + Math.floor(signalTimestamp.getTime() / 1000);
+        
+        // Check if we already have a signal with this exact symbol+timestamp
+        const isDuplicate = data.signals.some(s => {
+            const existingKey = s.symbol + '_' + Math.floor(new Date(s.timestamp).getTime() / 1000);
+            return existingKey === timestampKey;
         });
+
+        // Only log if it's not a duplicate
+        if (!isDuplicate) {
+            data.signals.push({
+                timestamp: signalTimestamp,
+                symbol: signalData.symbol,
+                signal: signalData.signal,
+                confidence: signalData.confidence,
+                pattern: signalData.pattern,
+                indicators: signalData.indicators,
+                fibonacci: signalData.fibonacci,
+                harmonics: signalData.harmonics,
+                meetsThreshold: signalData.meetsThreshold
+            });
+        }
 
         // Keep only last 50 signals
         if (data.signals.length > 50) {

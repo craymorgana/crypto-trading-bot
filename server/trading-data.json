@@ -1,0 +1,1010 @@
+{
+  "startTime": "2026-01-30T00:41:30.376Z",
+  "trades": [
+    {
+      "id": "trade_1769733702746",
+      "symbol": "BTC-USD",
+      "signal": "BULLISH",
+      "entryTime": "2026-01-30T00:41:42.746Z",
+      "entryPrice": 84278.03,
+      "stopPrice": 84138.515,
+      "targetPrice": 84487.30249999999,
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": "BULLISH",
+      "status": "OPEN",
+      "exitTime": null,
+      "exitPrice": null,
+      "profitLoss": null,
+      "profitLossPercent": null,
+      "reason": null
+    },
+    {
+      "id": "trade_1769733703021",
+      "symbol": "ETH-USD",
+      "signal": "BULLISH",
+      "entryTime": "2026-01-30T00:41:43.021Z",
+      "entryPrice": 2809.63,
+      "stopPrice": 2801.295,
+      "targetPrice": 2822.1325,
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": "BULLISH",
+      "status": "OPEN",
+      "exitTime": null,
+      "exitPrice": null,
+      "profitLoss": null,
+      "profitLossPercent": null,
+      "reason": null
+    },
+    {
+      "id": "trade_1769733703301",
+      "symbol": "XRP-USD",
+      "signal": "BULLISH",
+      "entryTime": "2026-01-30T00:41:43.301Z",
+      "entryPrice": 1.805,
+      "stopPrice": 1.7964500000000003,
+      "targetPrice": 1.8178249999999994,
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": "BULLISH",
+      "status": "OPEN",
+      "exitTime": null,
+      "exitPrice": null,
+      "profitLoss": null,
+      "profitLossPercent": null,
+      "reason": null
+    }
+  ],
+  "signals": [
+    {
+      "timestamp": "2026-01-30T00:41:42.744Z",
+      "symbol": "BTC-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 47.43,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -41.83352328083129,
+            "signal": -55.8240559766813,
+            "histogram": 13.990532695850014,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 84324.48576164083,
+            "middle": 84242.17049999998,
+            "lower": 84159.85523835913,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:41:43.020Z",
+      "symbol": "ETH-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 53,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -1.701796328796263,
+            "signal": -2.7805111559295455,
+            "histogram": 1.0787148271332825,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 2811.079020803194,
+            "middle": 2805.196500000001,
+            "lower": 2799.313979196808,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:41:43.300Z",
+      "symbol": "XRP-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 60.42,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.0006677497197451476,
+            "signal": -0.0012493156365797164,
+            "histogram": 0.0005815659168345688,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 1.8047820443035392,
+            "middle": 1.8009900000000005,
+            "lower": 1.797197955696462,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:41:43.632Z",
+      "symbol": "ADA-USD",
+      "signal": "BULLISH",
+      "confidence": 59,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 60.15,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.000038339446170210234,
+            "signal": -0.00015317462744314625,
+            "histogram": 0.00011483518127293601,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 0.33381141321022356,
+            "middle": 0.3332800000000001,
+            "lower": 0.3327485867897766,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": true,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:41:43.904Z",
+      "symbol": "SOL-USD",
+      "signal": "BULLISH",
+      "confidence": 59,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 54.14,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.03340396610317953,
+            "signal": -0.04844616691251365,
+            "histogram": 0.01504220080933412,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 117.58375443253117,
+            "middle": 117.47799999999995,
+            "lower": 117.37224556746874,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": true,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:41:44.284Z",
+      "symbol": "LTC-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 59.15,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": 0.004454035488393515,
+            "signal": -0.01754222064371539,
+            "histogram": 0.021996256132108906,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 66.1598570698964,
+            "middle": 66.02000000000002,
+            "lower": 65.88014293010364,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:42:11.925Z",
+      "symbol": "SOL-USD",
+      "signal": "BULLISH",
+      "confidence": 59,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 55.33,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.02139392359642045,
+            "signal": -0.04296507986342899,
+            "histogram": 0.02157115626700854,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 117.60284990613255,
+            "middle": 117.48299999999992,
+            "lower": 117.36315009386729,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": true,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:42:12.175Z",
+      "symbol": "LTC-USD",
+      "signal": "BULLISH",
+      "confidence": 59,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 63.64,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": 0.015720152791047326,
+            "signal": -0.01085531694031236,
+            "histogram": 0.026575469731359685,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 66.18850541786581,
+            "middle": 66.02700000000003,
+            "lower": 65.86549458213425,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": true,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:42:20.950Z",
+      "symbol": "BTC-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 47.19,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -36.877936636446975,
+            "signal": -52.007280914694014,
+            "histogram": 15.12934427824704,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 84318.62549132454,
+            "middle": 84240.35849999997,
+            "lower": 84162.09150867541,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:42:21.347Z",
+      "symbol": "ETH-USD",
+      "signal": "BULLISH",
+      "confidence": 59,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 54.5,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -1.265386362382742,
+            "signal": -2.475942250930303,
+            "histogram": 1.2105558885475611,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 2811.2109763227827,
+            "middle": 2805.229500000001,
+            "lower": 2799.248023677219,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": true,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:42:21.696Z",
+      "symbol": "XRP-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 59.65,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.0003217005236113568,
+            "signal": -0.0010620966433395834,
+            "histogram": 0.0007403961197282266,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 1.8048078598190866,
+            "middle": 1.8009950000000008,
+            "lower": 1.797182140180915,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:42:31.847Z",
+      "symbol": "ADA-USD",
+      "signal": "BULLISH",
+      "confidence": 59,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 60.16,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": 0.000007236940193666719,
+            "signal": -0.00012086035415851982,
+            "histogram": 0.00012809729435218654,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 0.33390332412516,
+            "middle": 0.33330000000000004,
+            "lower": 0.3326966758748401,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": true,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:43:11.402Z",
+      "symbol": "ETH-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 52.8,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.9630398135786891,
+            "signal": -2.1727454976682203,
+            "histogram": 1.2097056840895313,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 2811.4053922665034,
+            "middle": 2805.288500000001,
+            "lower": 2799.1716077334986,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:43:11.665Z",
+      "symbol": "XRP-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 55.39,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.00013508043925836155,
+            "signal": -0.0008757892961018569,
+            "histogram": 0.0007407088568434953,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 1.8050573987746086,
+            "middle": 1.8010750000000004,
+            "lower": 1.7970926012253923,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:43:12.285Z",
+      "symbol": "SOL-USD",
+      "signal": "BULLISH",
+      "confidence": 59,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 55.96,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.010968871796180224,
+            "signal": -0.03653917158677335,
+            "histogram": 0.025570299790593123,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 117.62285066305394,
+            "middle": 117.48899999999992,
+            "lower": 117.3551493369459,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": true,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:43:12.650Z",
+      "symbol": "LTC-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 64.35,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": 0.02515338576704096,
+            "signal": -0.0036397784378848046,
+            "histogram": 0.028793164204925763,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 66.21682409081308,
+            "middle": 66.03500000000001,
+            "lower": 65.85317590918694,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:43:21.051Z",
+      "symbol": "BTC-USD",
+      "signal": "BULLISH",
+      "confidence": 56,
+      "pattern": "invertedHammer",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 47.49,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -32.42641630944854,
+            "signal": -48.08261855636526,
+            "histogram": 15.65620224691672,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 84313.98788294515,
+            "middle": 84238.95899999997,
+            "lower": 84163.9301170548,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:43:31.955Z",
+      "symbol": "ADA-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 57.59,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": 0.00003476799156787447,
+            "signal": -0.00008968740625720119,
+            "histogram": 0.00012445539782507566,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 0.33398757128891093,
+            "middle": 0.33333,
+            "lower": 0.3326724287110891,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:44:11.287Z",
+      "symbol": "ETH-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 52.14,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.7351692370298224,
+            "signal": -1.884762497812435,
+            "histogram": 1.1495932607826127,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 2811.653437479779,
+            "middle": 2805.375500000001,
+            "lower": 2799.097562520223,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:44:11.535Z",
+      "symbol": "XRP-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 52.81,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.00004307568566774833,
+            "signal": -0.0007083626653468652,
+            "histogram": 0.0006652869796791169,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 1.805258569431965,
+            "middle": 1.8011699999999997,
+            "lower": 1.7970814305680345,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:44:12.146Z",
+      "symbol": "SOL-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 55.96,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -0.002688840834707662,
+            "signal": -0.029762722498813565,
+            "histogram": 0.027073881664105903,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 117.64053350129772,
+            "middle": 117.49499999999992,
+            "lower": 117.34946649870211,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:44:21.074Z",
+      "symbol": "BTC-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 46.88,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": -28.923224007419776,
+            "signal": -44.23621632945084,
+            "histogram": 15.312992322031064,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 84307.82318877033,
+            "middle": 84237.18699999998,
+            "lower": 84166.55081122962,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "harmonics": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:44:21.972Z",
+      "symbol": "ADA-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 50.55,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": 0.00003204270286538691,
+            "signal": -0.00006525988508483642,
+            "histogram": 0.00009730258795022332,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 0.334013710862215,
+            "middle": 0.333355,
+            "lower": 0.33269628913778504,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "meetsThreshold": true
+    },
+    {
+      "timestamp": "2026-01-30T00:44:22.621Z",
+      "symbol": "LTC-USD",
+      "signal": "BULLISH",
+      "confidence": 46,
+      "pattern": "None",
+      "indicators": {
+        "signal": "BULLISH",
+        "strength": 66,
+        "indicators": {
+          "rsi": {
+            "value": 63.03,
+            "overbought": false,
+            "oversold": false
+          },
+          "macd": {
+            "macd": 0.03146119180621554,
+            "signal": 0.003393955254039775,
+            "histogram": 0.028067236552175762,
+            "bullish": true,
+            "bearish": false
+          },
+          "bb": {
+            "upper": 66.23956597879899,
+            "middle": 66.04250000000002,
+            "lower": 65.84543402120104,
+            "closeToUpper": true,
+            "closeToLower": true
+          }
+        },
+        "confluenceSignals": [
+          "MACD bullish",
+          "Price at BB lower"
+        ]
+      },
+      "fibonacci": false,
+      "meetsThreshold": true
+    }
+  ],
+  "stats": {
+    "totalTrades": 0,
+    "totalWins": 0,
+    "totalLosses": 0,
+    "winRate": 0,
+    "totalProfitLoss": 0,
+    "currentBalance": 10000,
+    "initialBalance": 10000,
+    "totalReturn": 0,
+    "openPositions": 3,
+    "maxDrawdown": 0,
+    "consecutiveWins": 0,
+    "consecutiveLosses": 0,
+    "lastUpdate": "2026-01-30T00:44:22.622Z"
+  }
+}

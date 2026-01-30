@@ -132,12 +132,18 @@ class PositionManager {
     /**
      * Check if any positions should be closed based on stops or targets
      * @param {number} currentPrice - Current market price
+     * @param {string} symbol - Optional: filter by symbol
      * @returns {Array} - Positions that should be closed
      */
-    checkExitSignals(currentPrice) {
+    checkExitSignals(currentPrice, symbol = null) {
         const exitCandidates = [];
 
         this.positions.forEach(trade => {
+            // Filter by symbol if provided
+            if (symbol && trade.symbol !== symbol) {
+                return;
+            }
+
             let exitReason = null;
 
             // Check stop loss (tighter for scalping)

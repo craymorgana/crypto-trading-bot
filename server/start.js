@@ -50,7 +50,7 @@ async function startBot() {
     console.log('🚀 Starting Trading Bot...');
     console.log('='.repeat(50) + '\n');
     
-    const bot = spawn('node', [path.join(__dirname, 'bot.js')], {
+    const bot = spawn('node', [path.join(__dirname, 'bot-websocket.js')], {
         stdio: 'inherit'
     });
 
