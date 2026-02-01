@@ -1,12 +1,12 @@
 /**
- * WebSocket Handler for Coinbase Advanced Trade API
+ * WebSocket Handler for Kraken API
  * Handles real-time market data streaming
  */
 
 const WebSocket = require('ws');
 const EventEmitter = require('events');
 
-class CoinbaseWebSocket extends EventEmitter {
+class KrakenWebSocket extends EventEmitter {
     constructor(config) {
         super();
         this.config = config;
@@ -20,13 +20,13 @@ class CoinbaseWebSocket extends EventEmitter {
     connect() {
         return new Promise((resolve, reject) => {
             try {
-                // Coinbase WebSocket URL
-                const wsUrl = 'wss://advanced-trade-ws.coinbase.com';
+                // Kraken WebSocket URL (public feeds don't require auth)
+                const wsUrl = 'wss://ws.kraken.com/';
                 
                 this.ws = new WebSocket(wsUrl);
 
                 this.ws.on('open', () => {
-                    console.log('📡 WebSocket connected to Coinbase');
+                    console.log('📡 WebSocket connected to Kraken');
                     this.reconnectAttempts = 0;
                     this.subscribe();
                     resolve();
@@ -52,47 +52,60 @@ class CoinbaseWebSocket extends EventEmitter {
     }
 
     subscribe() {
+        // Kraken subscription format
+        // Converts symbols from CCXT format (BTC/USD) to Kraken format (XBT/USD, etc.)
+        const krakenPairs = this.config.tradingSymbols.map(symbol => {
+            // Kraken uses XBT instead of BTC
+            return symbol.replace('BTC/', 'XBT/');
+        });
+
         const subscribeMessage = {
-            type: 'subscribe',
-            product_ids: this.config.tradingSymbols,
-            channels: [
-                {
-                    name: 'ticker',
-                    product_ids: this.config.tradingSymbols
-                }
-            ]
+            event: 'subscribe',
+            pair: krakenPairs,
+            subscription: {
+                name: 'ticker'
+            }
         };
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(subscribeMessage));
-            console.log(`✅ Subscribed to ${this.config.tradingSymbols.length} trading pairs`);
+            console.log(`✅ Subscribed to ${krakenPairs.length} trading pairs on Kraken`);
         }
     }
 
     handleMessage(message) {
-        // Ignore subscription confirmations
-        if (message.type === 'subscriptions') {
+        // Ignore status/event messages
+        if (message.event) {
             return;
         }
 
-        // Handle ticker updates (price data)
-        if (message.type === 'ticker') {
-            this.emit('price_update', {
-                symbol: message.product_id,
-                price: parseFloat(message.price),
-                timestamp: message.time,
-                high24h: parseFloat(message.high_24h),
-                low24h: parseFloat(message.low_24h),
-                volume30d: parseFloat(message.volume_30d)
-            });
-        }
+        // Kraken sends array format: [channelID, data, channelName, pair]
+        if (Array.isArray(message) && message.length >= 4) {
+            const data = message[1];
+            const channelName = message[2];
+            let pair = message[3];
 
-        // Handle heartbeats
-        if (message.type === 'heartbeat') {
-            this.emit('heartbeat', {
-                timestamp: message.timestamp,
-                sequence: message.sequence
-            });
+            // Handle ticker channel
+            if (channelName === 'ticker' && data) {
+                // Kraken ticker format: [bid, bidVolume, ask, askVolume, spread, spreadPercentage, 
+                // lastTrade, lastTradeVolume, volumeToday, volumeAverage, priceHigh, priceLow, 
+                // priceOpen, vwap]
+                const price = parseFloat(data[2]); // ask price
+                const high24h = parseFloat(data[10]);
+                const low24h = parseFloat(data[11]);
+                
+                // Convert Kraken format (XBT) back to standard BTC for consistency
+                const symbol = pair.replace('XBT/', 'BTC/');
+                
+                this.emit('price_update', {
+                    symbol: symbol,
+                    price: price,
+                    timestamp: new Date().toISOString(),
+                    high24h: high24h,
+                    low24h: low24h,
+                    volume30d: parseFloat(data[8]) // volume today
+                });
+            }
         }
     }
 
@@ -120,4 +133,4 @@ class CoinbaseWebSocket extends EventEmitter {
     }
 }
 
-module.exports = CoinbaseWebSocket;
+module.exports = KrakenWebSocket;

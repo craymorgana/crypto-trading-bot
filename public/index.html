@@ -1,18 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crypto Scalping Bot - Trading Dashboard</title>
+    <title>CryptoAI - Premium Trading Terminal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="http://localhost:35729/livereload.js"></script>
 </head>
+
 <body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
     <div class="container">
         <header>
-            <h1>🤖 Crypto Scalping Bot</h1>
-            <p>Live Paper Trading Dashboard</p>
-            <div class="status">● LIVE MONITORING</div>
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">🤖</div>
+                    <div class="logo-text">
+                        <h1>CryptoAI</h1>
+                        <span class="subtitle">Autonomous Trading Terminal</span>
+                    </div>
+                </div>
+                <div class="status-badge">
+                    <span class="status-dot"></span>
+                    SYSTEM ONLINE
+                </div>
+            </div>
         </header>
 
         <!-- Performance Metrics -->
@@ -23,6 +43,11 @@
                 <div class="stat-label" style="color: #00ff88; margin-top: 5px;" id="totalReturn">+0.00%</div>
             </div>
             <div class="stat-box">
+                <div class="stat-label">Available Balance</div>
+                <div class="stat-number" id="availableBalance">$0.00</div>
+                <div class="stat-label">Invested: <span id="investedCapital">$0.00</span></div>
+            </div>
+            <div class="stat-box">
                 <div class="stat-label">Total P&L</div>
                 <div class="stat-number" id="totalProfitLoss">$0.00</div>
                 <div class="stat-label">Win Rate: <span id="winRate">0%</span></div>
@@ -30,7 +55,8 @@
             <div class="stat-box">
                 <div class="stat-label">Trades</div>
                 <div class="stat-number" id="totalTrades">0</div>
-                <div class="stat-label">Wins: <span id="totalWins">0</span> | Losses: <span id="totalLosses">0</span></div>
+                <div class="stat-label">Wins: <span id="totalWins">0</span> | Losses: <span id="totalLosses">0</span>
+                </div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Open Positions</div>
@@ -48,9 +74,10 @@
                     <table id="openPositionsTable">
                         <thead>
                             <tr>
+                                <th>Action</th>
                                 <th>Symbol</th>
-                                <th>Signal</th>
                                 <th>Entry Price</th>
+                                <th>Size ($)</th>
                                 <th>Stop Loss</th>
                                 <th>Target</th>
                                 <th>Confidence</th>
@@ -58,11 +85,16 @@
                             </tr>
                         </thead>
                         <tbody id="openPositionsBody">
-                            <tr><td colspan="7" class="no-data">No open positions</td></tr>
+                            <tr>
+                                <td colspan="8" class="no-data">No open positions</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
+            </div>
 
+            <!-- RIGHT COLUMN -->
+            <div class="right-column">
                 <!-- Recent Closed Trades -->
                 <div class="section">
                     <div class="section-title">✅ Recent Closed Trades</div>
@@ -70,7 +102,6 @@
                         <thead>
                             <tr>
                                 <th>Symbol</th>
-                                <th>Signal</th>
                                 <th>Entry Price</th>
                                 <th>Exit Price</th>
                                 <th>P&L</th>
@@ -80,31 +111,9 @@
                             </tr>
                         </thead>
                         <tbody id="closedTradesBody">
-                            <tr><td colspan="8" class="no-data">No closed trades yet</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- RIGHT COLUMN -->
-            <div class="right-column">
-                <!-- Recent Signals -->
-                <div class="section">
-                    <div class="section-title">🎯 Recent Signals</div>
-                    <table id="signalsTable">
-                        <thead>
                             <tr>
-                                <th>Time</th>
-                                <th>Symbol</th>
-                                <th>Signal</th>
-                                <th>Confidence</th>
-                                <th>Pattern</th>
-                                <th>Indicators</th>
-                                <th>Fib/Harmonics</th>
+                                <td colspan="7" class="no-data">No closed trades yet</td>
                             </tr>
-                        </thead>
-                        <tbody id="signalsBody">
-                            <tr><td colspan="7" class="no-data">No signals yet</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -140,15 +149,44 @@
             return date.toLocaleTimeString();
         }
 
+        // Close trade
+        async function closeTrade(tradeId) {
+            if (!confirm('Are you sure you want to close this trade?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/close-trade`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ tradeId })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Immediately update dashboard to reflect the change
+                    await updateDashboard();
+                } else {
+                    console.error('Error closing trade:', result.error);
+                }
+            } catch (err) {
+                console.error('Error closing trade:', err);
+            }
+        }
+
         // Update dashboard
         async function updateDashboard() {
             try {
                 const response = await fetch(`${API_BASE}/data`);
                 const data = await response.json();
 
+                console.log('Dashboard data received:', data);
+
                 // Update stats
                 const stats = data.stats;
                 document.getElementById('currentBalance').textContent = formatCurrency(stats.currentBalance);
+                document.getElementById('availableBalance').textContent = formatCurrency(stats.availableBalance);
+                document.getElementById('investedCapital').textContent = formatCurrency(stats.currentBalance - stats.availableBalance);
                 document.getElementById('totalReturn').textContent = formatPercent(stats.totalReturn);
                 document.getElementById('totalProfitLoss').textContent = formatCurrency(stats.totalProfitLoss);
                 document.getElementById('winRate').textContent = stats.winRate + '%';
@@ -158,6 +196,9 @@
                 document.getElementById('openPositions').textContent = stats.openPositions;
                 document.getElementById('lastUpdate').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
                 document.getElementById('refreshTime').textContent = new Date().toLocaleTimeString();
+
+                console.log('Trades array:', data.trades);
+                console.log('Open trades count:', data.trades.filter(t => t.status === 'OPEN').length);
 
                 // Update color based on P&L
                 const plElement = document.getElementById('totalProfitLoss');
@@ -171,9 +212,6 @@
                 // Update closed trades
                 updateClosedTrades(data.trades);
 
-                // Update signals
-                updateSignals(data.signals);
-
             } catch (err) {
                 console.error('Error updating dashboard:', err);
             }
@@ -184,17 +222,23 @@
             const tbody = document.getElementById('openPositionsBody');
 
             if (openTrades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="no-data">No open positions</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">No open positions</td></tr>';
                 return;
             }
 
             tbody.innerHTML = openTrades.map(trade => {
                 const indicators = [trade.pattern, trade.indicators].filter(Boolean).join(', ');
+                // Calculate position size in USD (Size * Entry Price)
+                const sizeInUsd = trade.positionSize ? formatCurrency(trade.positionSize * trade.entryPrice) : 'N/A';
+
                 return `
                     <tr>
+                        <td>
+                            <button class="btn-close" onclick="closeTrade('${trade.id}')">✖ Close</button>
+                        </td>
                         <td>${trade.symbol}</td>
-                        <td><span class="badge ${trade.signal === 'BULLISH' ? 'badge-bullish' : 'badge-bearish'}">${trade.signal}</span></td>
                         <td>$${trade.entryPrice.toFixed(2)}</td>
+                        <td>${sizeInUsd}</td>
                         <td>$${trade.stopPrice.toFixed(2)}</td>
                         <td>$${trade.targetPrice.toFixed(2)}</td>
                         <td>
@@ -219,7 +263,7 @@
             const tbody = document.getElementById('closedTradesBody');
 
             if (closedTrades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="no-data">No closed trades yet</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="no-data">No closed trades yet</td></tr>';
                 return;
             }
 
@@ -228,77 +272,12 @@
                 return `
                     <tr>
                         <td>${trade.symbol}</td>
-                        <td><span class="badge ${trade.signal === 'BULLISH' ? 'badge-bullish' : 'badge-bearish'}">${trade.signal}</span></td>
                         <td>$${trade.entryPrice.toFixed(2)}</td>
                         <td>$${trade.exitPrice.toFixed(2)}</td>
                         <td class="${profitClass}">$${trade.profitLoss.toFixed(2)}</td>
                         <td class="${profitClass}">${formatPercent(trade.profitLossPercent)}</td>
                         <td>${trade.reason}</td>
                         <td>${formatTime(trade.exitTime)}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // Config trading symbols order
-        const configSymbols = [
-            'BTC-USD', 'ETH-USD', 'XRP-USD', 'ADA-USD',
-            'SOL-USD', 'LTC-USD'
-        ];
-
-        function updateSignals(signals) {
-            const tbody = document.getElementById('signalsBody');
-            
-            if (signals.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="no-data">No signals yet</td></tr>';
-                return;
-            }
-
-            // Group signals by symbol
-            const signalsBySymbol = {};
-            signals.forEach(signal => {
-                if (!signalsBySymbol[signal.symbol]) {
-                    signalsBySymbol[signal.symbol] = [];
-                }
-                signalsBySymbol[signal.symbol].push(signal);
-            });
-
-            // Get latest signal for each symbol (sorted by timestamp), ordered by config
-            const displaySignals = configSymbols
-                .filter(symbol => signalsBySymbol[symbol])
-                .map(symbol => {
-                    const symbolSignals = signalsBySymbol[symbol]
-                        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                    return symbolSignals[0];
-                });
-
-            if (displaySignals.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="no-data">No signals yet</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = displaySignals.map(signal => {
-                const indicatorsList = [
-                    signal.indicators?.signal,
-                    signal.fibonacci ? 'Fib' : null,
-                    signal.harmonics ? 'Harmonics' : null
-                ].filter(Boolean).join(', ');
-
-                return `
-                    <tr>
-                        <td>${formatTime(signal.timestamp)}</td>
-                        <td><strong>${signal.symbol || 'N/A'}</strong></td>
-                        <td><span class="badge ${signal.signal === 'BULLISH' ? 'badge-bullish' : signal.signal === 'BEARISH' ? 'badge-bearish' : 'badge-neutral'}">${signal.signal}</span></td>
-                        <td>
-                            <div class="confidence-bar">
-                                <div class="confidence-fill" style="width: ${signal.confidence}%">
-                                    ${signal.confidence}%
-                                </div>
-                            </div>
-                        </td>
-                        <td>${signal.pattern || 'N/A'}</td>
-                        <td><span class="indicator">${signal.indicators?.signal || 'N/A'}</span></td>
-                        <td>${indicatorsList || 'N/A'}</td>
                     </tr>
                 `;
             }).join('');
@@ -311,4 +290,5 @@
         updateDashboard();
     </script>
 </body>
+
 </html>

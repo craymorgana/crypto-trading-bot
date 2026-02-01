@@ -22,6 +22,7 @@ function initializeDataFile() {
                 winRate: 0,
                 totalProfitLoss: 0,
                 currentBalance: 0,
+                availableBalance: 0,
                 initialBalance: 0,
                 totalReturn: 0,
                 openPositions: 0,
@@ -42,11 +43,11 @@ function initializeDataFile() {
 function logSignal(signalData) {
     try {
         const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        
+
         // Create a timestamp key for deduplication (rounded to nearest second)
         const signalTimestamp = new Date();
         const timestampKey = signalData.symbol + '_' + Math.floor(signalTimestamp.getTime() / 1000);
-        
+
         // Check if we already have a signal with this exact symbol+timestamp
         const isDuplicate = data.signals.some(s => {
             const existingKey = s.symbol + '_' + Math.floor(new Date(s.timestamp).getTime() / 1000);
@@ -85,7 +86,8 @@ function logSignal(signalData) {
 function logTrade(tradeData) {
     try {
         const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        
+
+        // Log the trade
         data.trades.push({
             id: tradeData.id,
             symbol: tradeData.symbol,
@@ -95,6 +97,7 @@ function logTrade(tradeData) {
             stopPrice: tradeData.stopPrice,
             targetPrice: tradeData.targetPrice,
             confidence: tradeData.confidence,
+            positionSize: tradeData.positionSize,
             pattern: tradeData.pattern,
             indicators: tradeData.indicators,
             status: 'OPEN',
@@ -104,6 +107,12 @@ function logTrade(tradeData) {
             profitLossPercent: null,
             reason: null
         });
+
+        // Deduct investment amount from current balance
+        const investment = tradeData.positionSize * tradeData.entryPrice;
+        if (!isNaN(investment)) {
+            data.stats.currentBalance = (data.stats.currentBalance || 0) - investment;
+        }
 
         data.stats.openPositions = data.trades.filter(t => t.status === 'OPEN').length;
 
@@ -119,7 +128,7 @@ function logTrade(tradeData) {
 function closeTrade(tradeId, exitPrice, exitReason, profitLoss, profitLossPercent) {
     try {
         const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        
+
         const trade = data.trades.find(t => t.id === tradeId);
         if (trade) {
             trade.status = 'CLOSED';
@@ -132,7 +141,7 @@ function closeTrade(tradeId, exitPrice, exitReason, profitLoss, profitLossPercen
             // Update stats
             data.stats.totalTrades++;
             data.stats.totalProfitLoss += profitLoss;
-            
+
             if (profitLoss > 0) {
                 data.stats.totalWins++;
                 data.stats.consecutiveWins++;
@@ -143,7 +152,7 @@ function closeTrade(tradeId, exitPrice, exitReason, profitLoss, profitLossPercen
                 data.stats.consecutiveWins = 0;
             }
 
-            data.stats.winRate = data.stats.totalTrades > 0 
+            data.stats.winRate = data.stats.totalTrades > 0
                 ? ((data.stats.totalWins / data.stats.totalTrades) * 100).toFixed(2)
                 : 0;
 
@@ -162,10 +171,18 @@ function closeTrade(tradeId, exitPrice, exitReason, profitLoss, profitLossPercen
 function updateStats(statsData) {
     try {
         const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+
+        // Calculate available balance (total balance minus capital invested in open positions)
+        const capitalInvested = data.trades
+            .filter(t => t.status === 'OPEN')
+            .reduce((sum, trade) => sum + (trade.positionSize * trade.entryPrice || 0), 0);
         
+        const availableBalance = Math.max(0, (statsData.currentBalance || data.stats.currentBalance || 0) - capitalInvested);
+
         data.stats = {
             ...data.stats,
             ...statsData,
+            availableBalance: availableBalance,
             lastUpdate: new Date()
         };
 
@@ -214,6 +231,66 @@ function resetData(initialBalance) {
     return initialData;
 }
 
+/**
+ * Log a command to be processed by the bot
+ */
+function logCommand(command) {
+    try {
+        const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+
+        if (!data.commands) {
+            data.commands = [];
+        }
+
+        data.commands.push({
+            id: `cmd_${Date.now()}`,
+            timestamp: new Date(),
+            ...command,
+            status: 'PENDING'
+        });
+
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+        return { success: true };
+    } catch (err) {
+        console.error('Error logging command:', err.message);
+        return { error: err.message };
+    }
+}
+
+/**
+ * Get pending commands
+ */
+function getPendingCommands() {
+    try {
+        const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        return (data.commands || []).filter(c => c.status === 'PENDING');
+    } catch (err) {
+        return [];
+    }
+}
+
+/**
+ * Mark command as processed
+ */
+function markCommandProcessed(commandId, result = {}) {
+    try {
+        const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+
+        if (data.commands) {
+            const cmd = data.commands.find(c => c.id === commandId);
+            if (cmd) {
+                cmd.status = 'PROCESSED';
+                cmd.processedAt = new Date();
+                cmd.result = result;
+            }
+        }
+
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error('Error marking command processed:', err.message);
+    }
+}
+
 module.exports = {
     initializeDataFile,
     logSignal,
@@ -221,5 +298,8 @@ module.exports = {
     closeTrade,
     updateStats,
     getAllData,
-    resetData
+    resetData,
+    logCommand,
+    getPendingCommands,
+    markCommandProcessed
 };

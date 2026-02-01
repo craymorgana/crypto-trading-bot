@@ -7,16 +7,20 @@ class PositionManager {
     constructor(config = {}) {
         this.positions = [];
         this.closedTrades = [];
-        
+
         // Risk configuration
         this.config = {
             maxPositions: config.maxPositions || 3,
             riskPerTrade: config.riskPerTrade || 0.02, // 2% risk per trade
-            takeProfitRatio: config.takeProfitRatio || 1.5, // 1.5:1 risk/reward
+            takeProfitRatio: config.takeProfitRatio || 1.5, // base R/R
+            takeProfitRatioHigh: config.takeProfitRatioHigh || 2.5, // higher R/R for high confidence
+            takeProfitRatioLow: config.takeProfitRatioLow || 1.4, // lower R/R for low confidence
+            confidenceHigh: config.confidenceHigh || 70,
+            confidenceLow: config.confidenceLow || 45,
             maxDrawdown: config.maxDrawdown || 0.05, // 5% max drawdown
             ...config
         };
-        
+
         this.accountBalance = config.accountBalance || 1000;
         this.initialBalance = this.accountBalance;
     }
@@ -28,27 +32,54 @@ class PositionManager {
      * @param {string} signal - 'BULLISH' or 'BEARISH'
      * @returns {Object} - Position sizing details
      */
-    calculatePositionSize(entryPrice, stopPrice, signal) {
-        const riskAmount = this.accountBalance * this.config.riskPerTrade;
+    calculatePositionSize(entryPrice, stopPrice, signal, confidence = 0) {
+        // Fix: Use "Risk Per Trade" as "Allocation Per Trade" (Spot Trading Mode)
+        // Instead of calculating size based on stop loss distance (which implies leverage),
+        // we simply invest a fixed percentage of the account balance per trade.
+        const investmentAmount = this.accountBalance * this.config.riskPerTrade;
+
+        // Calculate units to buy based on investment amount
+        const positionSize = investmentAmount / entryPrice;
+
         const priceRisk = Math.abs(entryPrice - stopPrice);
 
-        if (priceRisk === 0) {
-            return { error: 'Invalid stop loss price' };
-        }
+        // Calculate the actual dollar risk if the stop is hit
+        const riskAmount = positionSize * priceRisk;
 
-        const positionSize = riskAmount / priceRisk;
-        const targetPrice = signal === 'BULLISH' 
-            ? entryPrice + (priceRisk * this.config.takeProfitRatio)
-            : entryPrice - (priceRisk * this.config.takeProfitRatio);
+        const takeProfitRatio = this.getTakeProfitRatio(confidence);
+
+        const targetPrice = signal === 'BULLISH'
+            ? entryPrice + (priceRisk * takeProfitRatio)
+            : entryPrice - (priceRisk * takeProfitRatio);
 
         return {
             positionSize,
-            riskAmount,
+            riskAmount,         // Dollar amount lost if stop is hit
+            investmentAmount,   // Dollar amount invested (held)
             priceRisk,
             targetPrice,
-            riskRewardRatio: this.config.takeProfitRatio,
-            profitPotential: positionSize * priceRisk * this.config.takeProfitRatio
+            riskRewardRatio: takeProfitRatio,
+            profitPotential: positionSize * (Math.abs(targetPrice - entryPrice))
         };
+    }
+
+    /**
+     * Dynamically select take-profit ratio based on confidence
+     * @param {number} confidence - 0 to 100
+     * @returns {number}
+     */
+    getTakeProfitRatio(confidence) {
+        if (confidence >= this.config.confidenceHigh) {
+            return this.config.takeProfitRatioHigh;
+        }
+        if (confidence <= this.config.confidenceLow) {
+            return this.config.takeProfitRatioLow;
+        }
+
+        // Interpolate between low and high ratios for mid confidence
+        const range = this.config.confidenceHigh - this.config.confidenceLow;
+        const t = range === 0 ? 0 : (confidence - this.config.confidenceLow) / range;
+        return this.config.takeProfitRatioLow + (this.config.takeProfitRatioHigh - this.config.takeProfitRatioLow) * t;
     }
 
     /**
@@ -69,9 +100,10 @@ class PositionManager {
         }
 
         const sizing = this.calculatePositionSize(
-            tradeData.entryPrice, 
-            tradeData.stopPrice, 
-            tradeData.signal
+            tradeData.entryPrice,
+            tradeData.stopPrice,
+            tradeData.signal,
+            tradeData.confidence || 0
         );
 
         if (sizing.error) return sizing;
@@ -174,6 +206,18 @@ class PositionManager {
     }
 
     /**
+     * Calculate available balance (total balance minus capital tied up in open positions)
+     * @returns {number} - Available balance for new trades
+     */
+    getAvailableBalance() {
+        const capitalInvested = this.positions.reduce((sum, trade) => {
+            return sum + trade.positionSize * trade.entryPrice;
+        }, 0);
+        
+        return Math.max(0, this.accountBalance - capitalInvested);
+    }
+
+    /**
      * Get performance statistics
      * @returns {Object} - Performance metrics
      */
@@ -195,6 +239,7 @@ class PositionManager {
             totalProfitLoss: totalProfitLoss.toFixed(2),
             totalReturn: ((totalProfitLoss / this.initialBalance) * 100).toFixed(2) + '%',
             currentBalance: this.accountBalance.toFixed(2),
+            availableBalance: this.getAvailableBalance().toFixed(2),
             openPositions: this.positions.length
         };
     }

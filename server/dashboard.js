@@ -11,6 +11,13 @@ const net = require('net');
 const app = express();
 let PORT = process.env.DASHBOARD_PORT || 3000;
 
+// Command handler registry for immediate processing
+let closeTradeHandler = null;
+
+function registerCloseTradeHandler(handler) {
+    closeTradeHandler = handler;
+}
+
 // Function to find an available port
 const findAvailablePort = (startPort = 3000) => {
     return new Promise((resolve) => {
@@ -29,10 +36,53 @@ const findAvailablePort = (startPort = 3000) => {
     });
 };
 
-// Create livereload server to watch for file changes
+// Function to find an available port for livereload
+const findAvailableLiveReloadPort = (startPort = 35729) => {
+    return new Promise((resolve) => {
+        const server = net.createServer();
+        server.listen(startPort, () => {
+            server.close();
+            resolve(startPort);
+        });
+        server.on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                resolve(findAvailableLiveReloadPort(startPort + 1));
+            } else {
+                resolve(startPort);
+            }
+        });
+    });
+};
+
+// Create livereload server with dynamic port
+let liveReloadPort = 35729;
 const liveReloadServer = livereload.createServer({
+    port: liveReloadPort,
     exts: ['js', 'css', 'html'],
     delay: 100
+});
+
+liveReloadServer.on('error', async (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.log(`⚠️  Port ${liveReloadPort} in use for livereload, trying next port...`);
+        liveReloadPort = await findAvailableLiveReloadPort(liveReloadPort + 1);
+        // Restart livereload with new port
+        try {
+            liveReloadServer.close();
+            const newLiveReloadServer = livereload.createServer({
+                port: liveReloadPort,
+                exts: ['js', 'css', 'html'],
+                delay: 100
+            });
+            newLiveReloadServer.watch([
+                path.join(__dirname, 'config.js'),
+                path.join(__dirname, 'bot.js'),
+                path.join(__dirname, '../public')
+            ]);
+        } catch (e) {
+            console.log('⚠️  Could not start livereload server');
+        }
+    }
 });
 
 // Watch config and bot files for changes
@@ -111,6 +161,40 @@ app.get('/api/signals', (req, res) => {
     }
 });
 
+// Close trade command
+app.post('/api/close-trade', async (req, res) => {
+    try {
+        const { tradeId } = req.body;
+        if (!tradeId) {
+            return res.status(400).json({ error: 'Trade ID is required' });
+        }
+
+        // If we have a handler registered, process immediately
+        if (closeTradeHandler) {
+            const result = await closeTradeHandler(tradeId);
+            if (result.success) {
+                return res.json({ success: true, message: 'Trade closed successfully' });
+            } else {
+                return res.status(500).json({ error: result.error || 'Failed to close trade' });
+            }
+        }
+
+        // Fallback to queueing if no handler is registered
+        const result = dataLogger.logCommand({
+            type: 'CLOSE_POSITION',
+            tradeId
+        });
+
+        if (result.error) {
+            return res.status(500).json({ error: result.error });
+        }
+
+        res.json({ success: true, message: 'Close command queued' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Serve dashboard HTML
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
@@ -126,4 +210,4 @@ app.get('/', (req, res) => {
     });
 })();
 
-module.exports = { app, dataLogger };
+module.exports = { app, dataLogger, registerCloseTradeHandler };

@@ -115,21 +115,49 @@ function analyzeForScalping(ohlcv, options = {}) {
     }
 
     // 5. Calculate Combined Score
-    const totalScore = Object.values(analysis.scores).reduce((a, b) => a + b, 0);
-    const maxScore = 100 + (opts.includeFibonacci ? 20 : 0) + (opts.includeHarmonics ? 25 : 0);
-    const confidencePercent = Math.min((totalScore / maxScore) * 100, 100);
+    // Normalize all scores to 0-100 range, then average them
+    const scores = [];
+    
+    // Candlestick pattern confidence (0-100)
+    if (analysis.scores.candlesticks > 0) {
+        scores.push(analysis.scores.candlesticks);
+    }
+    
+    // Indicator signal strength (0-100)
+    if (analysis.scores.indicators > 0) {
+        scores.push(analysis.scores.indicators);
+    }
+    
+    // Fibonacci level confirmation (add 30 pts if present)
+    if (analysis.scores.fibonacci > 0) {
+        scores.push(30);
+    }
+    
+    // Harmonic pattern confirmation (add 30 pts if valid)
+    if (analysis.scores.harmonics > 0) {
+        scores.push(30);
+    }
+    
+    // Average the scores to get final confidence
+    const confidencePercent = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
     // 6. Determine Final Signal
+    // Determine based on which signal is strongest (candlestick or indicator)
     let finalSignal = 'NEUTRAL';
-    const bullishScore = (analysis.scores.candlesticks > 0 && analysis.signals.candlesticks.signal === 'BULLISH' ? analysis.scores.candlesticks : 0) +
-                         (analysis.signals.indicators?.signal === 'BULLISH' ? analysis.scores.indicators : 0);
-    const bearishScore = (analysis.scores.candlesticks > 0 && analysis.signals.candlesticks.signal === 'BEARISH' ? analysis.scores.candlesticks : 0) +
-                         (analysis.signals.indicators?.signal === 'BEARISH' ? analysis.scores.indicators : 0);
-
-    if (bullishScore > bearishScore && confidencePercent >= opts.minConfidenceThreshold) {
-        finalSignal = 'BULLISH';
-    } else if (bearishScore > bullishScore && confidencePercent >= opts.minConfidenceThreshold) {
-        finalSignal = 'BEARISH';
+    const candlestickSignal = analysis.signals.candlesticks?.signal || 'NEUTRAL';
+    const indicatorSignal = analysis.signals.indicators?.signal || 'NEUTRAL';
+    
+    // Use whichever signal is stronger, or if both agree, use that direction
+    if (candlestickSignal === 'BULLISH' || indicatorSignal === 'BULLISH') {
+        if (candlestickSignal !== 'BEARISH' && indicatorSignal !== 'BEARISH') {
+            finalSignal = 'BULLISH';
+        }
+    }
+    
+    if (candlestickSignal === 'BEARISH' || indicatorSignal === 'BEARISH') {
+        if (candlestickSignal !== 'BULLISH' && indicatorSignal !== 'BULLISH') {
+            finalSignal = 'BEARISH';
+        }
     }
 
     analysis.finalSignal = finalSignal;

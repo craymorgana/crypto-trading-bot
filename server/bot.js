@@ -26,7 +26,7 @@ async function runBot() {
     config.tradingSymbols.forEach(symbol => {
         lastCandleTimeMap[symbol] = null;
     });
-    
+
     console.log(`\n🚀 Starting SCALPING BOT for MULTIPLE PAIRS`);
     console.log(`📊 Trading Pairs: ${config.tradingSymbols.join(', ')}`);
     console.log(`📊 Exchange: Coinbase`);
@@ -42,7 +42,7 @@ async function runBot() {
                 try {
                     // 1. Fetch OHLCV data (need 100+ for technical indicators)
                     const ohlcv = await exchange.fetchOHLCV(symbol, config.analysisParams.candleInterval, undefined, config.analysisParams.ohlcvHistory);
-                    
+
                     const currentCandle = ohlcv[ohlcv.length - 1];
                     const closedCandle = ohlcv[ohlcv.length - 2];
                     const currentCandleTime = currentCandle[0];
@@ -56,7 +56,7 @@ async function runBot() {
                             console.log(`================`);
                             lastLoggedCandleTime = currentCandleTime;
                         }
-                        
+
                         // Run unified analysis on closed candles
                         const analysis = analyzeForScalping(ohlcv.slice(0, -1), {
                             minConfidenceThreshold: config.analysisParams.minConfidenceThreshold
@@ -101,13 +101,13 @@ async function runBot() {
                         // 4. Check for new entry signals
                         if (analysis.meetsThreshold && analysis.finalSignal !== 'NEUTRAL') {
                             const closedCandle = ohlcv[ohlcv.length - 2];
-                            
+
                             // Calculate ATR for stop loss (simplified: 1.5x current candle range)
                             const candleRange = closedCandle[2] - closedCandle[3];
                             const stopLossDistance = candleRange * 1.5;
-                            
+
                             let stopPrice, entryPrice = currentPrice;
-                            
+
                             if (analysis.finalSignal === 'BULLISH') {
                                 stopPrice = closedCandle[3] - stopLossDistance; // Below the low
                             } else {
@@ -115,8 +115,13 @@ async function runBot() {
                             }
 
                             // Calculate position size and check if we can enter
-                            const sizing = positionManager.calculatePositionSize(entryPrice, stopPrice, analysis.finalSignal);
-                            
+                            const sizing = positionManager.calculatePositionSize(
+                                entryPrice,
+                                stopPrice,
+                                analysis.finalSignal,
+                                analysis.confidence
+                            );
+
                             if (!sizing.error) {
                                 const tradeResult = positionManager.openPosition({
                                     symbol: symbol,
@@ -145,18 +150,69 @@ async function runBot() {
                                         stopPrice: trade.stopPrice,
                                         targetPrice: trade.targetPrice,
                                         confidence: trade.confidence,
+                                        positionSize: trade.positionSize,
                                         pattern: analysis.signals.candlesticks?.pattern,
                                         indicators: analysis.signals.indicators?.signal
                                     });
                                 }
                             }
                         }
-                        
+
                         lastCandleTimeMap[symbol] = currentCandleTime;
-                        
+
                     }
                 } catch (symbolError) {
                     console.error(`❌ Error processing ${symbol}: ${symbolError.message}`);
+                }
+            }
+
+            // 5. Process pending commands
+            const pendingCommands = dataLogger.getPendingCommands();
+            for (const cmd of pendingCommands) {
+                if (cmd.type === 'CLOSE_POSITION') {
+                    console.log(`\n👨‍💻 Manual close requested for trade ${cmd.tradeId}`);
+                    // Use 0 as exit price to indicate market close (or current price if available)
+                    // We need to find the current price for the symbol of this trade
+
+                    // Ideally we should look up the current price for the specific symbol
+                    // Since we don't have it easily here without fetching, let's try to close it via positionManager
+                    // The positionManager needs an exit price.
+
+                    // We can attempt to find the trade in active positions to get the symbol
+                    const tradeToClose = positionManager.positions.find(t => t.id === cmd.tradeId);
+
+                    if (tradeToClose) {
+                        try {
+                            const ticker = await exchange.fetchTicker(tradeToClose.symbol);
+                            const currentPrice = ticker.last;
+
+                            const result = positionManager.closePosition(cmd.tradeId, currentPrice);
+
+                            if (result.success) {
+                                const trade = result.trade;
+                                console.log(`✅ Manually closed ${trade.symbol} at ${currentPrice}`);
+
+                                dataLogger.closeTrade(
+                                    cmd.tradeId,
+                                    currentPrice,
+                                    'MANUAL_CLOSE',
+                                    trade.profitLoss,
+                                    trade.profitLossPercent
+                                );
+
+                                dataLogger.markCommandProcessed(cmd.id, { success: true, trade });
+                            } else {
+                                console.log(`⚠️ Failed to close trade: ${result.error}`);
+                                dataLogger.markCommandProcessed(cmd.id, { success: false, error: result.error });
+                            }
+                        } catch (err) {
+                            console.error(`❌ Error fetching ticker for manual close: ${err.message}`);
+                            dataLogger.markCommandProcessed(cmd.id, { success: false, error: err.message });
+                        }
+                    } else {
+                        console.log(`⚠️ Trade ${cmd.tradeId} not found or already closed`);
+                        dataLogger.markCommandProcessed(cmd.id, { success: false, error: 'Trade not found' });
+                    }
                 }
             }
 
@@ -164,8 +220,8 @@ async function runBot() {
             await sleep(config.analysisParams.checkInterval);
 
         } catch (error) {
-            console.error("❌ Loop Error: ", error.message);  
-            await sleep(5000); 
+            console.error("❌ Loop Error: ", error.message);
+            await sleep(5000);
         }
     }
 }
