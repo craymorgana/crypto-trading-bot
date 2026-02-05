@@ -12,16 +12,16 @@ class PositionManager {
         this.config = {
             maxPositions: config.maxPositions || 3,
             riskPerTrade: config.riskPerTrade || 0.02, // 2% risk per trade
-            takeProfitRatio: config.takeProfitRatio || 1.5, // base R/R
-            takeProfitRatioHigh: config.takeProfitRatioHigh || 2.5, // higher R/R for high confidence
-            takeProfitRatioLow: config.takeProfitRatioLow || 1.4, // lower R/R for low confidence
+            takeProfitRatio: config.takeProfitRatio || 3.0, // base R/R (3:1)
+            takeProfitRatioHigh: config.takeProfitRatioHigh || 3.5, // higher R/R for high confidence
+            takeProfitRatioLow: config.takeProfitRatioLow || 2.8, // lower R/R for low confidence
             confidenceHigh: config.confidenceHigh || 70,
             confidenceLow: config.confidenceLow || 45,
             maxDrawdown: config.maxDrawdown || 0.05, // 5% max drawdown
             ...config
         };
 
-        this.accountBalance = config.accountBalance || 1000;
+        this.accountBalance = config.accountBalance !== undefined ? config.accountBalance : 1000;
         this.initialBalance = this.accountBalance;
     }
 
@@ -64,6 +64,36 @@ class PositionManager {
     }
 
     /**
+     * Calculate take profit price based on Fibonacci levels
+     * Used for swing trading where targets are at 50%, 61.8%, and 100% retracement
+     * @param {number} swingHigh - Local swing high
+     * @param {number} swingLow - Local swing low
+     * @param {string} signal - 'BULLISH' or 'BEARISH'
+     * @returns {Object} - Array of Fib targets with probabilities
+     */
+    calculateFibonacciTargets(swingHigh, swingLow, signal) {
+        const range = Math.abs(swingHigh - swingLow);
+        
+        if (signal === 'BULLISH') {
+            // For bullish: targets are UP from swing low (or retracement DOWN from high)
+            return {
+                target_50: swingLow + (range * 0.50),      // 50% retracement
+                target_618: swingLow + (range * 0.618),    // 61.8% (Fibonacci)
+                target_100: swingLow + range,               // 100% (equals swing high)
+                primary: swingLow + (range * 0.618)         // Use 61.8% as primary target
+            };
+        } else {
+            // For bearish: targets are DOWN from swing high (or retracement UP from low)
+            return {
+                target_50: swingHigh - (range * 0.50),     // 50% retracement
+                target_618: swingHigh - (range * 0.618),   // 61.8% (Fibonacci)
+                target_100: swingHigh - range,              // 100% (equals swing low)
+                primary: swingHigh - (range * 0.618)        // Use 61.8% as primary target
+            };
+        }
+    }
+
+    /**
      * Dynamically select take-profit ratio based on confidence
      * @param {number} confidence - 0 to 100
      * @returns {number}
@@ -84,7 +114,7 @@ class PositionManager {
 
     /**
      * Open a new position
-     * @param {Object} tradeData - {symbol, signal, entryPrice, stopPrice, confidence, analysis}
+     * @param {Object} tradeData - {symbol, signal, entryPrice, stopPrice, confidence, analysis, targetPrice}
      * @returns {Object} - Trade details or error
      */
     openPosition(tradeData) {
@@ -114,7 +144,7 @@ class PositionManager {
             signal: tradeData.signal,
             entryPrice: tradeData.entryPrice,
             stopPrice: tradeData.stopPrice,
-            targetPrice: sizing.targetPrice,
+            targetPrice: tradeData.targetPrice || sizing.targetPrice,  // Allow override from swing analysis
             positionSize: sizing.positionSize,
             riskAmount: sizing.riskAmount,
             confidence: tradeData.confidence || 0,

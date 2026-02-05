@@ -38,12 +38,12 @@
         <!-- Performance Metrics -->
         <div class="stats-grid">
             <div class="stat-box">
-                <div class="stat-label">Total Balance</div>
+                <div class="stat-label">Kraken Balance</div>
                 <div class="stat-number" id="currentBalance">$0.00</div>
                 <div class="stat-label" style="color: #00ff88; margin-top: 5px;" id="totalReturn">+0.00%</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">Available Balance</div>
+                <div class="stat-label">Available (Kraken)</div>
                 <div class="stat-number" id="availableBalance">$0.00</div>
                 <div class="stat-label">Invested: <span id="investedCapital">$0.00</span></div>
             </div>
@@ -62,6 +62,47 @@
                 <div class="stat-label">Open Positions</div>
                 <div class="stat-number" id="openPositions">0</div>
                 <div class="stat-label" id="lastUpdate">Last update: Never</div>
+            </div>
+        </div>
+
+        <div class="section control-panel">
+            <div class="section-title">🧭 Bot Controls</div>
+            <div class="control-grid">
+                <div class="control-group">
+                    <div class="control-label">Bot Actions</div>
+                    <div class="control-row">
+                        <button class="btn-action btn-primary" onclick="startBot()">▶ Start Bot</button>
+                        <button class="btn-action btn-warning" onclick="stopBot()">⏸ Stop Bot</button>
+                        <button class="btn-action" onclick="restartBot()">🔄 Restart Bot</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="control-label">Trading Mode</div>
+                    <div class="control-row">
+                        <select id="tradingModeSelect" class="select-control" onchange="setTradingMode(this.value)">
+                            <option value="SCALPING">Scalping (5m) - 2% Risk</option>
+                            <option value="SWING">Swing (4h) - ULTRA 17%</option>
+                        </select>
+                        <span class="control-note">Switch between scalping and swing trading.</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="control-label">Execution Mode</div>
+                    <div class="control-row">
+                        <select id="executionModeSelect" class="select-control" onchange="setExecutionMode(this.value)">
+                            <option value="SIMULATED" selected>📊 Simulated Trading</option>
+                            <option value="LIVE">🔴 Live Trading</option>
+                        </select>
+                        <span class="control-note" style="color: #ffaa00;">⚠️ Live mode will execute real trades with your Kraken balance.</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="control-label">Emergency</div>
+                    <div class="control-row">
+                        <button class="btn-action btn-danger" onclick="cancelAllTrades()">⛔ Cancel All Trades</button>
+                    </div>
+                </div>
+                <div class="control-status" id="controlStatus">Ready.</div>
             </div>
         </div>
 
@@ -172,6 +213,87 @@
             } catch (err) {
                 console.error('Error closing trade:', err);
             }
+        }
+
+        function setControlStatus(message, isError = false) {
+            const statusEl = document.getElementById('controlStatus');
+            statusEl.textContent = message;
+            statusEl.className = isError ? 'control-status status-error' : 'control-status status-ok';
+        }
+
+        async function sendBotCommand(endpoint, payload = null) {
+            try {
+                setControlStatus('Sending command...');
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: payload ? JSON.stringify(payload) : null
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    // Show immediate feedback based on command
+                    const commandType = endpoint.split('/').pop();
+                    let statusMessage = result.message || 'Command queued.';
+                    
+                    if (commandType === 'start') {
+                        setControlStatus('✅ Bot is running');
+                    } else if (commandType === 'stop') {
+                        setControlStatus('⏸️ Bot stopped');
+                    } else if (commandType === 'restart') {
+                        setControlStatus('🔄 Bot restarting...');
+                        setTimeout(() => setControlStatus('✅ Bot is running'), 2000);
+                    } else {
+                        setControlStatus(statusMessage);
+                    }
+                } else {
+                    setControlStatus(result.error || 'Command failed.', true);
+                }
+            } catch (err) {
+                setControlStatus('Command error. Check console.', true);
+                console.error('Command error:', err);
+            }
+        }
+
+        function startBot() {
+            return sendBotCommand('/bot/start');
+        }
+
+        function stopBot() {
+            return sendBotCommand('/bot/stop');
+        }
+
+        function restartBot() {
+            return sendBotCommand('/bot/restart');
+        }
+
+        function cancelAllTrades() {
+            if (!confirm('🚨 Cancel all open trades and orders on Kraken?')) return;
+            sendBotCommand('/bot/cancel-all-trades', {})
+                .then(response => {
+                    if (response.success) {
+                        document.getElementById('controlStatus').textContent = '✅ ' + response.message;
+                        setTimeout(() => {
+                            document.getElementById('controlStatus').textContent = 'Ready.';
+                        }, 5000);
+                    }
+                });
+        }
+
+        function setTradingMode(mode) {
+            return sendBotCommand('/bot/mode', { mode });
+        }
+
+        function setExecutionMode(mode) {
+            if (mode === 'LIVE') {
+                if (!confirm('⚠️ WARNING: You are about to enable LIVE TRADING with real money on Kraken. Are you sure?')) {
+                    document.getElementById('executionModeSelect').value = 'SIMULATED';
+                    return;
+                }
+            }
+            return sendBotCommand('/bot/execution', { mode });
         }
 
         // Update dashboard

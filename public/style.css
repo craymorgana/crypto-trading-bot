@@ -280,6 +280,120 @@ header {
     box-shadow: 0 0 10px rgba(255, 46, 99, 0.4);
 }
 
+.btn-action {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-border);
+    color: var(--text-main);
+    padding: 10px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-action:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+}
+
+.btn-primary {
+    background: rgba(0, 255, 157, 0.12);
+    border-color: rgba(0, 255, 157, 0.4);
+    color: var(--primary);
+}
+
+.btn-primary:hover {
+    background: rgba(0, 255, 157, 0.22);
+    box-shadow: 0 0 20px rgba(0, 255, 157, 0.25);
+}
+
+.btn-warning {
+    background: rgba(255, 184, 0, 0.12);
+    border-color: rgba(255, 184, 0, 0.4);
+    color: var(--warning);
+}
+
+.btn-warning:hover {
+    background: rgba(255, 184, 0, 0.22);
+    box-shadow: 0 0 20px rgba(255, 184, 0, 0.25);
+}
+
+.btn-danger {
+    background: rgba(255, 46, 99, 0.12);
+    border-color: rgba(255, 46, 99, 0.4);
+    color: var(--danger);
+}
+
+.btn-danger:hover {
+    background: rgba(255, 46, 99, 0.22);
+    box-shadow: 0 0 20px rgba(255, 46, 99, 0.25);
+}
+
+.control-panel {
+    margin-bottom: 30px;
+}
+
+.control-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.control-group {
+    display: grid;
+    gap: 10px;
+}
+
+.control-label {
+    color: var(--text-muted);
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.control-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.select-control {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-border);
+    color: var(--text-main);
+    padding: 10px 14px;
+    border-radius: 10px;
+    min-width: 220px;
+}
+
+.select-control:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 255, 157, 0.2);
+}
+
+.control-note {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+.control-status {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    padding-top: 5px;
+}
+
+.control-status.status-ok {
+    color: var(--success);
+}
+
+.control-status.status-error {
+    color: var(--danger);
+}
+
 /* Cards & Tables */
 .section {
     background: var(--card-bg);

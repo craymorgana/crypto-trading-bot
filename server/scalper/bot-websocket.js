@@ -1,10 +1,10 @@
 require('dotenv').config();
 const ccxt = require('ccxt');
 const KrakenWebSocket = require('./websocket-handler');
-const { analyzeForScalping } = require('./unified-analysis');
-const PositionManager = require('./risk-manager');
-const dataLogger = require('./data-logger');
-const config = require('./config');
+const { analyzeForScalping } = require('../shared/unified-analysis');
+const PositionManager = require('../shared/risk-manager');
+const dataLogger = require('../shared/data-logger');
+const config = require('../shared/config');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -19,7 +19,7 @@ async function runBot() {
     const positionManager = new PositionManager(config.riskParams);
 
     // Initialize data logger with starting balance
-    // TODO: FUTURE - Fetch real account balance from Coinbase API here
+    // TODO: FUTURE - Fetch real account balance from Kraken API here
     // const balance = await exchange.fetchBalance();
     // positionManager.accountBalance = balance.total['USD'];
     dataLogger.resetData(positionManager.accountBalance);
@@ -241,7 +241,7 @@ async function runBot() {
                 if (currentCandleTime !== lastCandleTimeMap[symbol]) {
                     // Log candle close once per close time
                     if (currentCandleTime !== lastLoggedCandleTime) {
-                        console.log(`\n🕯️  New candle close detected on coinbase [${new Date(currentCandleTime).toLocaleTimeString()}]`);
+                        console.log(`\n🕯️  New candle close detected on kraken [${new Date(currentCandleTime).toLocaleTimeString()}]`);
                         console.log(`================`);
                         lastLoggedCandleTime = currentCandleTime;
                     }

@@ -44,12 +44,12 @@ function analyzeCandlesticks(ohlcv) {
         'bearishEngulfing': { signal: 'BEARISH', weight: 25 },
         'piercingLine': { signal: 'BULLISH', weight: 25 },
 
-        // TIER 3: Low Probability/Confirmation Needed (Single Patterns) - +15%
-        'hammer': { signal: 'BULLISH', weight: 15 },
-        'invertedHammer': { signal: 'BULLISH', weight: 15 },
-        'shootingStar': { signal: 'BEARISH', weight: 15 },
-        'hangingMan': { signal: 'BEARISH', weight: 15 },
-        'doji': { signal: 'NEUTRAL', weight: 5 }
+        // TIER 3: Low Probability/Too Many False Signals - Reduced weights
+        'hammer': { signal: 'BULLISH', weight: 8 },          // Reduced from 15
+        'invertedHammer': { signal: 'BULLISH', weight: 8 },  // Reduced from 15
+        'shootingStar': { signal: 'BEARISH', weight: 8 },    // Reduced from 15
+        'hangingMan': { signal: 'BEARISH', weight: 8 },      // Reduced from 15
+        'doji': { signal: 'NEUTRAL', weight: 0 }             // Disabled - too indecisive for scalping
     };
 
     // 5. Select the strongest pattern found on the current candle

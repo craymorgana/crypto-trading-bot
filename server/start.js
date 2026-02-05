@@ -16,7 +16,8 @@ async function startBot() {
     // 1. Start Dashboard Server
     console.log('📊 Starting Dashboard Server...');
     const dashboard = spawn('node', [path.join(__dirname, 'dashboard.js')], {
-        stdio: 'inherit'
+        stdio: 'inherit',
+        cwd: __dirname
     });
 
     dashboard.on('error', (err) => {
@@ -46,12 +47,13 @@ async function startBot() {
 
     await sleep(1000);
 
-    // 3. Start Bot
-    console.log('🚀 Starting Trading Bot...');
+    // 3. Start Bot (Production with WebSocket)
+    console.log('🚀 Starting Trading Bot (Production Mode)...');
     console.log('='.repeat(50) + '\n');
     
-    const bot = spawn('node', [path.join(__dirname, 'bot-websocket.js')], {
-        stdio: 'inherit'
+    const bot = spawn('node', [path.join(__dirname, 'scalper', 'bot-production.js')], {
+        stdio: 'inherit',
+        cwd: path.join(__dirname, '..') // Set working directory to project root where .env is
     });
 
     bot.on('error', (err) => {

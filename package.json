@@ -4,16 +4,24 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "setup": "node setup.js",
     "start": "node server/start.js",
-    "bot": "node server/bot.js",
+    "bot": "node server/scalper/bot-production.js",
+    "bot:websocket": "node server/scalper/bot-websocket.js",
     "dashboard": "node server/dashboard.js",
-    "test": "node server/test-analysis.js"
+    "test": "node server/scalper/test-analysis.js",
+    "backtest": "node server/scalper/backtest.js",
+    "quick-backtest": "node server/scalper/quick-backtest.js",
+    "backtest:all": "node server/scalper/quick-backtest.js all",
+    "swing-backtest": "node server/swing/backtest.js",
+    "swing-backtest:all": "node server/swing/backtest.js all"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "axios": "^1.13.4",
     "candlestick": "^1.0.2",
     "ccxt": "^4.5.34",
     "dotenv": "^17.2.3",

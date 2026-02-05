@@ -1,4 +1,4 @@
-const { analyzeCandlesticks } = require('./candlesticks');
+const { analyzeCandlesticks } = require('../shared/candlesticks');
 
 // Helper to create a candle: [time, open, high, low, close, volume]
 const createCandle = (o, h, l, c) => [0, o, h, l, c, 0];

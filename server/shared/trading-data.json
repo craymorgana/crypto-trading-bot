@@ -1,0 +1,95 @@
+{
+  "startTime": "2026-02-05T01:12:27.544Z",
+  "trades": [],
+  "signals": [],
+  "stats": {
+    "totalTrades": 0,
+    "totalWins": 0,
+    "totalLosses": 0,
+    "winRate": 0,
+    "totalProfitLoss": 0,
+    "currentBalance": 0,
+    "initialBalance": 0,
+    "totalReturn": 0,
+    "openPositions": 0,
+    "maxDrawdown": 0,
+    "consecutiveWins": 0,
+    "consecutiveLosses": 0
+  },
+  "commands": [
+    {
+      "id": "cmd_1770253998471",
+      "timestamp": "2026-02-05T01:13:18.471Z",
+      "type": "STOP_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254008417",
+      "timestamp": "2026-02-05T01:13:28.417Z",
+      "type": "STOP_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254012286",
+      "timestamp": "2026-02-05T01:13:32.286Z",
+      "type": "RESTART_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254030566",
+      "timestamp": "2026-02-05T01:13:50.566Z",
+      "type": "START_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254118903",
+      "timestamp": "2026-02-05T01:15:18.903Z",
+      "type": "SET_MODE",
+      "mode": "SWING",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254123541",
+      "timestamp": "2026-02-05T01:15:23.541Z",
+      "type": "STOP_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254131292",
+      "timestamp": "2026-02-05T01:15:31.292Z",
+      "type": "SET_MODE",
+      "mode": "SCALPING",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254133555",
+      "timestamp": "2026-02-05T01:15:33.555Z",
+      "type": "START_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254142338",
+      "timestamp": "2026-02-05T01:15:42.338Z",
+      "type": "RESTART_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254156056",
+      "timestamp": "2026-02-05T01:15:56.056Z",
+      "type": "START_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254184893",
+      "timestamp": "2026-02-05T01:16:24.893Z",
+      "type": "RESTART_BOT",
+      "status": "PENDING"
+    },
+    {
+      "id": "cmd_1770254290151",
+      "timestamp": "2026-02-05T01:18:10.151Z",
+      "type": "START_BOT",
+      "status": "PENDING"
+    }
+  ]
+}

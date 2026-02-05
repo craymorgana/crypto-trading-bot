@@ -68,11 +68,41 @@ function calculateHarmonicLevels(prices) {
 }
 
 /**
- * Project the D point based on harmonic ratios
- * @param {Array} prices - Price points [X, A, B, C]
+ * Validate if XABC points form a valid harmonic pattern
+ * Checks actual Fibonacci ratios between the legs
+ * @param {Array} prices - [X, A, B, C] price points
  * @param {string} patternType - 'gartley', 'butterfly', or 'bat'
- * @returns {Object} - Projected D level with target zones
+ * @param {number} tolerance - Tolerance percentage for ratio matching (default: 10%)
+ * @returns {Object} - Validation result with ratio details
  */
+function validateHarmonicRatios(prices, patternType = 'gartley', tolerance = 10) {
+    const harmonic = calculateHarmonicLevels(prices);
+    if (harmonic.error) return { valid: false, error: harmonic.error };
+
+    const { ratios } = harmonic;
+    const expectedRatios = HARMONIC_RATIOS[patternType];
+    
+    if (!expectedRatios) {
+        return { valid: false, error: `Unknown pattern type: ${patternType}` };
+    }
+
+    // Check AB/XA ratio
+    const ab_xa_match = Math.abs(ratios.ab_xa - expectedRatios.ab_xa.min) < (tolerance / 100);
+    
+    // Check BC/AB ratio
+    const bc_ab_min = expectedRatios.bc_ab.min;
+    const bc_ab_max = expectedRatios.bc_ab.max;
+    const bc_ab_match = ratios.bc_ab >= bc_ab_min && ratios.bc_ab <= bc_ab_max;
+
+    const ratiosMatch = ab_xa_match && bc_ab_match;
+
+    return {
+        valid: ratiosMatch,
+        pattern: patternType,
+        ab_xa: { actual: ratios.ab_xa.toFixed(3), expected: expectedRatios.ab_xa.min.toFixed(3), match: ab_xa_match },
+        bc_ab: { actual: ratios.bc_ab.toFixed(3), expected: `${bc_ab_min.toFixed(3)}-${bc_ab_max.toFixed(3)}`, match: bc_ab_match }
+    };
+}
 function projectHarmonicD(prices, patternType = 'gartley') {
     const harmonic = calculateHarmonicLevels(prices);
     if (harmonic.error) return harmonic;
@@ -121,7 +151,9 @@ function validateHarmonicPattern(currentPrice, prices, patternType, tolerance = 
     if (projection.error) return projection;
 
     const projectedLevels = Object.values(projection.projections);
-    const toleranceAmount = (Math.max(...projectedLevels) - Math.min(...projectedLevels)) * (tolerance / 100);
+    
+    // Calculate tolerance as percentage of CURRENT PRICE (not range between levels)
+    const toleranceAmount = currentPrice * (tolerance / 100);
 
     // Check if current price is within tolerance of any projected D level
     const withinZone = projectedLevels.some(level => 
@@ -132,16 +164,19 @@ function validateHarmonicPattern(currentPrice, prices, patternType, tolerance = 
         const distance = Math.abs(currentPrice - level);
         return distance < Math.abs(currentPrice - nearest) ? level : nearest;
     });
+    
+    const distancePercent = ((Math.abs(currentPrice - nearestLevel) / currentPrice) * 100).toFixed(2);
 
     return {
         pattern: patternType,
         valid: withinZone,
         nearestLevel,
         distance: Math.abs(currentPrice - nearestLevel),
+        distancePercent: parseFloat(distancePercent),
         tolerance,
         message: withinZone ? 
-            `Pattern CONFIRMED at D zone (${patternType.toUpperCase()})` :
-            `Price approaching ${patternType} D target`
+            `Pattern CONFIRMED at D zone (${patternType.toUpperCase()}) - ${distancePercent}% from target` :
+            `Price ${distancePercent}% away from ${patternType} D target`
     };
 }
 
@@ -149,5 +184,6 @@ module.exports = {
     HARMONIC_RATIOS,
     calculateHarmonicLevels,
     projectHarmonicD,
-    validateHarmonicPattern
+    validateHarmonicPattern,
+    validateHarmonicRatios
 };

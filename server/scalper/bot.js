@@ -1,17 +1,29 @@
 require('dotenv').config();
 const ccxt = require('ccxt');
-const { analyzeForScalping, formatAnalysis } = require('./unified-analysis');
-const PositionManager = require('./risk-manager');
-const dataLogger = require('./data-logger');
-const config = require('./config');
+const { analyzeForScalping, analyzeForSwinging, formatAnalysis } = require('../shared/unified-analysis');
+const PositionManager = require('../shared/risk-manager');
+const dataLogger = require('../shared/data-logger');
+const config = require('../shared/config');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const botState = {
+    paused: false,
+    mode: 'SCALPING'
+};
+
+const applyRiskParams = (positionManager, params) => {
+    if (!params) return;
+    Object.keys(params).forEach(key => {
+        positionManager.config[key] = params[key];
+    });
+};
+
 async function runBot() {
-    const exchange = new ccxt.coinbase({
+    const exchange = new ccxt.kraken({
         'enableRateLimit': true,
-        'apiKey': process.env.BINANCE_US_KEY,
-        'secret': process.env.BINANCE_US_SECRET
+        'apiKey': process.env.KRAKEN_KEY,
+        'secret': process.env.KRAKEN_SECRET
     });
 
     // Initialize position manager with risk parameters
@@ -29,7 +41,7 @@ async function runBot() {
 
     console.log(`\n🚀 Starting SCALPING BOT for MULTIPLE PAIRS`);
     console.log(`📊 Trading Pairs: ${config.tradingSymbols.join(', ')}`);
-    console.log(`📊 Exchange: Coinbase`);
+    console.log(`📊 Exchange: Kraken`);
     console.log(`🎯 Max Positions: ${positionManager.config.maxPositions}`);
     console.log(`💰 Risk Per Trade: ${positionManager.config.riskPerTrade * 100}%`);
     console.log(`📈 Dashboard: http://localhost:3000`);
@@ -41,7 +53,16 @@ async function runBot() {
             for (const symbol of config.tradingSymbols) {
                 try {
                     // 1. Fetch OHLCV data (need 100+ for technical indicators)
-                    const ohlcv = await exchange.fetchOHLCV(symbol, config.analysisParams.candleInterval, undefined, config.analysisParams.ohlcvHistory);
+                    const activeParams = botState.mode === 'SWING'
+                        ? config.swingAnalysisParams
+                        : config.analysisParams;
+
+                    const ohlcv = await exchange.fetchOHLCV(
+                        symbol,
+                        activeParams.candleInterval,
+                        undefined,
+                        activeParams.ohlcvHistory
+                    );
 
                     const currentCandle = ohlcv[ohlcv.length - 1];
                     const closedCandle = ohlcv[ohlcv.length - 2];
@@ -52,15 +73,19 @@ async function runBot() {
                     if (currentCandleTime !== lastCandleTimeMap[symbol]) {
                         // Log candle close once per close time
                         if (currentCandleTime !== lastLoggedCandleTime) {
-                            console.log(`\n🕯️  New candle close detected on coinbase [${new Date(currentCandleTime).toLocaleTimeString()}]`);
+                            console.log(`\n🕯️  New candle close detected on kraken [${new Date(currentCandleTime).toLocaleTimeString()}]`);
                             console.log(`================`);
                             lastLoggedCandleTime = currentCandleTime;
                         }
 
                         // Run unified analysis on closed candles
-                        const analysis = analyzeForScalping(ohlcv.slice(0, -1), {
-                            minConfidenceThreshold: config.analysisParams.minConfidenceThreshold
-                        });
+                        const analysis = botState.mode === 'SWING'
+                            ? analyzeForSwinging(ohlcv.slice(0, -1), {
+                                minConfidenceThreshold: activeParams.minConfidenceThreshold
+                            })
+                            : analyzeForScalping(ohlcv.slice(0, -1), {
+                                minConfidenceThreshold: activeParams.minConfidenceThreshold
+                            });
 
                         // Log signal to data logger
                         dataLogger.logSignal({
@@ -98,13 +123,13 @@ async function runBot() {
                             totalReturn: ((positionManager.accountBalance - positionManager.initialBalance) / positionManager.initialBalance) * 100
                         });
 
-                        // 4. Check for new entry signals
-                        if (analysis.meetsThreshold && analysis.finalSignal !== 'NEUTRAL') {
+                        // 4. Check for new entry signals (only when not paused and in scalping mode)
+                        if (!botState.paused && analysis.meetsThreshold && analysis.finalSignal !== 'NEUTRAL') {
                             const closedCandle = ohlcv[ohlcv.length - 2];
 
-                            // Calculate ATR for stop loss (simplified: 1.5x current candle range)
+                            // Calculate ATR for stop loss (simplified: candle range * multiplier)
                             const candleRange = closedCandle[2] - closedCandle[3];
-                            const stopLossDistance = candleRange * 1.5;
+                            const stopLossDistance = candleRange * (activeParams.stopMultiplier || 1.5);
 
                             let stopPrice, entryPrice = currentPrice;
 
@@ -171,21 +196,12 @@ async function runBot() {
             for (const cmd of pendingCommands) {
                 if (cmd.type === 'CLOSE_POSITION') {
                     console.log(`\n👨‍💻 Manual close requested for trade ${cmd.tradeId}`);
-                    // Use 0 as exit price to indicate market close (or current price if available)
-                    // We need to find the current price for the symbol of this trade
-
-                    // Ideally we should look up the current price for the specific symbol
-                    // Since we don't have it easily here without fetching, let's try to close it via positionManager
-                    // The positionManager needs an exit price.
-
-                    // We can attempt to find the trade in active positions to get the symbol
                     const tradeToClose = positionManager.positions.find(t => t.id === cmd.tradeId);
 
                     if (tradeToClose) {
                         try {
                             const ticker = await exchange.fetchTicker(tradeToClose.symbol);
                             const currentPrice = ticker.last;
-
                             const result = positionManager.closePosition(cmd.tradeId, currentPrice);
 
                             if (result.success) {
@@ -213,6 +229,67 @@ async function runBot() {
                         console.log(`⚠️ Trade ${cmd.tradeId} not found or already closed`);
                         dataLogger.markCommandProcessed(cmd.id, { success: false, error: 'Trade not found' });
                     }
+                } else if (cmd.type === 'STOP_BOT') {
+                    botState.paused = true;
+                    console.log('⏸ Bot paused - entries disabled');
+                    dataLogger.markCommandProcessed(cmd.id, { success: true, paused: true });
+                } else if (cmd.type === 'START_BOT') {
+                    botState.paused = false;
+                    console.log('▶ Bot resumed - entries enabled');
+                    dataLogger.markCommandProcessed(cmd.id, { success: true, paused: false });
+                } else if (cmd.type === 'RESTART_BOT') {
+                    botState.paused = false;
+                    lastLoggedCandleTime = null;
+                    Object.keys(lastCandleTimeMap).forEach(symbol => {
+                        lastCandleTimeMap[symbol] = null;
+                    });
+                    console.log('🔄 Bot restart requested - state reset');
+                    dataLogger.markCommandProcessed(cmd.id, { success: true, restarted: true });
+                } else if (cmd.type === 'SET_MODE') {
+                    const nextMode = (cmd.mode || '').toUpperCase();
+                    if (['SCALPING', 'SWING'].includes(nextMode)) {
+                        botState.mode = nextMode;
+                        if (botState.mode === 'SWING') {
+                            applyRiskParams(positionManager, config.swingRiskParams);
+                        } else {
+                            applyRiskParams(positionManager, config.riskParams);
+                        }
+                        console.log(`🧭 Trading mode set to ${botState.mode}`);
+                        dataLogger.markCommandProcessed(cmd.id, { success: true, mode: botState.mode });
+                    } else {
+                        dataLogger.markCommandProcessed(cmd.id, { success: false, error: 'Invalid mode' });
+                    }
+                } else if (cmd.type === 'CANCEL_ALL_TRADES') {
+                    const openTrades = [...positionManager.positions];
+                    let closedCount = 0;
+                    let errorCount = 0;
+
+                    for (const trade of openTrades) {
+                        try {
+                            const ticker = await exchange.fetchTicker(trade.symbol);
+                            const currentPrice = ticker.last;
+                            const result = positionManager.closePosition(trade.id, currentPrice);
+
+                            if (result.success) {
+                                const closedTrade = result.trade;
+                                dataLogger.closeTrade(
+                                    trade.id,
+                                    currentPrice,
+                                    'CANCEL_ALL',
+                                    closedTrade.profitLoss,
+                                    closedTrade.profitLossPercent
+                                );
+                                closedCount++;
+                            } else {
+                                errorCount++;
+                            }
+                        } catch (err) {
+                            errorCount++;
+                        }
+                    }
+
+                    console.log(`⛔ Cancel-all completed: ${closedCount} closed, ${errorCount} errors`);
+                    dataLogger.markCommandProcessed(cmd.id, { success: true, closedCount, errorCount });
                 }
             }
 
