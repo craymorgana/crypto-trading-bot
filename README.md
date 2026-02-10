@@ -37,6 +37,42 @@ The CryptoAI Trading Bot is a professional-grade automated trading system that:
 
 ---
 
+## 🎯 XRP/USD Price Analysis Feature
+
+**NEW:** Dedicated XRP/USD analysis tool for finding optimal long entry points!
+
+```bash
+npm run analyze-xrp
+```
+
+This analyzes current XRP/USD price and tells you:
+- ✅ Current market conditions (price, volume, momentum)
+- ✅ Technical indicators (RSI, MACD, Bollinger Bands)
+- ✅ Entry recommendation (BUY or WAIT)
+- ✅ Exact entry price, stop-loss, and take-profit levels
+- ✅ Detailed reasoning for the recommendation
+
+**Example output:**
+```
+✅ GOOD ENTRY OPPORTUNITY FOR LONG POSITION
+
+📈 TRADE SETUP:
+  Entry Price:      $2.1234
+  Stop Loss:        $2.0597 (-3.0%)
+  Take Profit:      $2.1743 (+2.4%)
+  Risk/Reward:      1:0.80
+
+🎯 REASONING:
+  ✓ Unified analysis shows BULLISH signal
+  ✓ Confidence 90.0% exceeds 23% threshold
+  ✓ RSI oversold (28.45)
+  ✓ MACD histogram positive
+```
+
+📖 **Full Guide:** See [XRP_ANALYSIS_GUIDE.md](XRP_ANALYSIS_GUIDE.md) for detailed instructions.
+
+---
+
 ## ⚡ Quick Start (5 Minutes)
 
 ### 1. Prerequisites
@@ -434,10 +470,12 @@ Solution:
 ```
 crypto-bot/
 ├── README.md                    ← You are here
+├── XRP_ANALYSIS_GUIDE.md        ← XRP/USD analysis guide
 ├── QUICK_START.md              ← Quick reference
 ├── BOT_STARTUP_CHECKLIST.md    ← Component review
 ├── package.json                ← Dependencies
 ├── .env                        ← API credentials (not in Git!)
+├── analyze-xrpusd.js           ← XRP/USD price analyzer
 │
 ├── public/                     ← Web Dashboard
 │   ├── index.html             ← Dashboard UI
@@ -468,6 +506,9 @@ crypto-bot/
 ```bash
 # Start everything (dashboard + bot)
 npm start
+
+# Analyze XRP/USD for long position entry
+npm run analyze-xrp
 
 # Start just dashboard
 node server/dashboard.js

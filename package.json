@@ -14,7 +14,8 @@
     "quick-backtest": "node server/scalper/quick-backtest.js",
     "backtest:all": "node server/scalper/quick-backtest.js all",
     "swing-backtest": "node server/swing/backtest.js",
-    "swing-backtest:all": "node server/swing/backtest.js all"
+    "swing-backtest:all": "node server/swing/backtest.js all",
+    "analyze-xrp": "node analyze-xrpusd.js"
   },
   "keywords": [],
   "author": "",
