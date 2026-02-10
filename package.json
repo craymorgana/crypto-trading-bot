@@ -10,6 +10,7 @@
     "bot:websocket": "node server/scalper/bot-websocket.js",
     "dashboard": "node server/dashboard.js",
     "test": "node server/scalper/test-analysis.js",
+    "test:xrp": "node test-xrp-analysis.js",
     "backtest": "node server/scalper/backtest.js",
     "quick-backtest": "node server/scalper/quick-backtest.js",
     "backtest:all": "node server/scalper/quick-backtest.js all",

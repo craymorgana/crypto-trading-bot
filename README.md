@@ -69,7 +69,9 @@ This analyzes current XRP/USD price and tells you:
   ✓ MACD histogram positive
 ```
 
-📖 **Full Guide:** See [XRP_ANALYSIS_GUIDE.md](XRP_ANALYSIS_GUIDE.md) for detailed instructions.
+**Documentation:**
+- 🚀 **Quick Start:** [XRP_QUICK_START.md](XRP_QUICK_START.md) - Get started in 2 minutes
+- 📖 **Full Guide:** [XRP_ANALYSIS_GUIDE.md](XRP_ANALYSIS_GUIDE.md) - Comprehensive documentation
 
 ---
 
@@ -470,12 +472,14 @@ Solution:
 ```
 crypto-bot/
 ├── README.md                    ← You are here
-├── XRP_ANALYSIS_GUIDE.md        ← XRP/USD analysis guide
+├── XRP_QUICK_START.md           ← XRP analysis quick start (2 min)
+├── XRP_ANALYSIS_GUIDE.md        ← XRP analysis comprehensive guide
 ├── QUICK_START.md              ← Quick reference
 ├── BOT_STARTUP_CHECKLIST.md    ← Component review
 ├── package.json                ← Dependencies
 ├── .env                        ← API credentials (not in Git!)
 ├── analyze-xrpusd.js           ← XRP/USD price analyzer
+├── test-xrp-analysis.js        ← XRP analysis tests
 │
 ├── public/                     ← Web Dashboard
 │   ├── index.html             ← Dashboard UI
