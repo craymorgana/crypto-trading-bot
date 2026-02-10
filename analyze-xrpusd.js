@@ -21,6 +21,13 @@ const CONFIG = {
     refreshMinutes: 240          // Check every 4 hours (240 minutes)
 };
 
+// Initialize Kraken exchange (reused across multiple analysis runs)
+const exchange = new ccxt.kraken({
+    enableRateLimit: true,
+    apiKey: process.env.KRAKEN_US_KEY || '',
+    secret: process.env.KRAKEN_US_SECRET || ''
+});
+
 /**
  * Format timestamp as readable string
  */
@@ -44,13 +51,6 @@ async function analyzeXrpUsd() {
     console.log('  📊 XRP/USD LONG POSITION ANALYSIS');
     console.log('  ' + formatTimestamp(new Date()));
     console.log('═'.repeat(60) + '\n');
-
-    // Initialize Kraken exchange
-    const exchange = new ccxt.kraken({
-        enableRateLimit: true,
-        apiKey: process.env.KRAKEN_US_KEY || '',
-        secret: process.env.KRAKEN_US_SECRET || ''
-    });
 
     try {
         // Fetch historical OHLCV data
