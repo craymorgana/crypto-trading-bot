@@ -6,11 +6,12 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const dataLogger = require('./shared/data-logger');
-const livereload = require('livereload');
 const net = require('net');
+const ccxt = require('ccxt');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
-let PORT = process.env.DASHBOARD_PORT || 3000;
+let PORT = parseInt(process.env.DASHBOARD_PORT || 3000, 10);
 
 // Path to bot mode state file
 const BOT_MODE_STATE_FILE = path.join(__dirname, 'shared', 'bot-mode-state.json');
@@ -18,7 +19,19 @@ const BOT_EXECUTION_STATE_FILE = path.join(__dirname, 'shared', 'bot-execution-s
 
 // Command handler registry for immediate processing
 let closeTradeHandler = null;
-let exchange = null; // Will be set by bot when it initializes
+
+// Initialize exchange connection for live trading
+let exchange = null;
+if (process.env.KRAKEN_US_KEY && process.env.KRAKEN_US_SECRET) {
+    exchange = new ccxt.kraken({
+        'enableRateLimit': true,
+        'apiKey': process.env.KRAKEN_US_KEY,
+        'secret': process.env.KRAKEN_US_SECRET
+    });
+    console.log('✅ Kraken exchange initialized for live trading');
+} else {
+    console.log('⚠️  Kraken API credentials not found - live trading disabled');
+}
 
 function registerCloseTradeHandler(handler) {
     closeTradeHandler = handler;
@@ -46,61 +59,7 @@ const findAvailablePort = (startPort = 3000) => {
     });
 };
 
-// Function to find an available port for livereload
-const findAvailableLiveReloadPort = (startPort = 35729) => {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.listen(startPort, () => {
-            server.close();
-            resolve(startPort);
-        });
-        server.on('error', (err) => {
-            if (err.code === 'EADDRINUSE') {
-                resolve(findAvailableLiveReloadPort(startPort + 1));
-            } else {
-                resolve(startPort);
-            }
-        });
-    });
-};
 
-// Create livereload server with dynamic port
-let liveReloadPort = 35729;
-const liveReloadServer = livereload.createServer({
-    port: liveReloadPort,
-    exts: ['js', 'css', 'html'],
-    delay: 100
-});
-
-liveReloadServer.on('error', async (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.log(`⚠️  Port ${liveReloadPort} in use for livereload, trying next port...`);
-        liveReloadPort = await findAvailableLiveReloadPort(liveReloadPort + 1);
-        // Restart livereload with new port
-        try {
-            liveReloadServer.close();
-            const newLiveReloadServer = livereload.createServer({
-                port: liveReloadPort,
-                exts: ['js', 'css', 'html'],
-                delay: 100
-            });
-            newLiveReloadServer.watch([
-                path.join(__dirname, 'config.js'),
-                path.join(__dirname, 'bot.js'),
-                path.join(__dirname, '../public')
-            ]);
-        } catch (e) {
-            console.log('⚠️  Could not start livereload server');
-        }
-    }
-});
-
-// Watch config and bot files for changes
-liveReloadServer.watch([
-    path.join(__dirname, 'config.js'),
-    path.join(__dirname, 'bot.js'),
-    path.join(__dirname, '../public')
-]);
 
 // Middleware
 app.use(express.json());
@@ -171,7 +130,7 @@ app.get('/api/signals', (req, res) => {
     }
 });
 
-// Execute trade on Kraken with conditional close order (stop-loss) + take-profit
+// Execute trade on Kraken with stop-loss + take-profit
 app.post('/api/execute-trade', async (req, res) => {
     try {
         if (!exchange) {
@@ -180,126 +139,151 @@ app.post('/api/execute-trade', async (req, res) => {
 
         const { symbol, side, quantity, entryPrice, stopPrice, takeProfitPrice } = req.body;
 
-        if (!symbol || !side || !quantity || !entryPrice) {
-            return res.status(400).json({ error: 'Missing required fields: symbol, side, quantity, entryPrice' });
+        if (!symbol || !side || !quantity) {
+            return res.status(400).json({ error: 'Missing required fields: symbol, side, quantity' });
         }
 
         console.log(`\n📊 EXECUTING TRADE: ${side.toUpperCase()} ${quantity} ${symbol}`);
-        console.log(`   Entry: $${entryPrice.toFixed(2)}`);
+        console.log(`   Entry: ~$${entryPrice?.toFixed(2) || 'market'}`);
         console.log(`   Stop: $${stopPrice?.toFixed(2) || 'N/A'}`);
         console.log(`   Target: $${takeProfitPrice?.toFixed(2) || 'N/A'}`);
 
-        // Build close order (conditional stop-loss) parameters for Kraken
-        // When primary market order fills, this stop-loss order will be automatically placed
-        let params = {
-            'trading_agreement': 'agree'  // Required for margin orders
-        };
-
-        if (stopPrice) {
-            // Add conditional close order (stop-loss-limit)
-            // Opposite side from primary order
-            const stopSide = side === 'buy' ? 'sell' : 'buy';
-            
-            params.close = {
-                'ordertype': 'stop-loss-limit',
-                'price': stopPrice.toString(),      // Stop trigger price
-                'price2': stopPrice.toString()      // Limit price (same as stop for market exit)
-            };
-            
-            console.log(`   🛑 Will attach stop-loss-limit at $${stopPrice.toFixed(2)}`);
+        // Load market info (required for price/amount precision)
+        let market;
+        try {
+            await exchange.loadMarkets();
+            market = exchange.market(symbol);
+        } catch (err) {
+            console.error(`   ❌ Failed to load market info: ${err.message}`);
+            return res.status(500).json({ error: `Failed to load market info for ${symbol}: ${err.message}` });
         }
 
-        // Add client order ID for tracking
-        params['userref'] = Math.floor(Date.now() / 1000);
+        const minAmount = market.limits?.amount?.min || 0;
+        if (quantity < minAmount) {
+            console.log(`   ❌ Order size ${quantity} below minimum ${minAmount} for ${symbol}`);
+            return res.status(400).json({ 
+                error: `Order size ${quantity.toFixed(6)} is below minimum ${minAmount} for ${symbol}`,
+                minAmount
+            });
+        }
 
-        // Place market order with conditional close order attached
+        // Apply exchange precision to quantity and prices
+        const preciseQty = parseFloat(exchange.amountToPrecision(symbol, quantity));
+        const preciseStop = stopPrice ? parseFloat(exchange.priceToPrecision(symbol, stopPrice)) : null;
+        const preciseTP = takeProfitPrice ? parseFloat(exchange.priceToPrecision(symbol, takeProfitPrice)) : null;
+        console.log(`   🔢 Precision-adjusted: qty=${preciseQty}, stop=${preciseStop}, tp=${preciseTP}`);
+
+        // Build conditional close params for the entry order
+        // Kraken supports ONE conditional close per order (attached atomically)
+        // ccxt expects a nested 'close' object that it serializes to:
+        //   close[ordertype] = order type for the close
+        //   close[price]     = trigger price (stop trigger)
+        //   close[price2]    = limit price (worst fill price allowed)
+        // See: https://docs.kraken.com/api/docs/rest-api/add-order
+        // See: https://github.com/ccxt/ccxt/blob/main/examples/py/kraken-conditional-close-order.py
+        const orderParams = {};
+
+        if (preciseStop) {
+            // Attach stop-loss-limit as conditional close on the entry order
+            // This ensures the stop is created atomically when the entry fills
+            // Limit price set 0.5% beyond trigger to allow fill in volatile conditions
+            const stopLimitRaw = side === 'buy'
+                ? preciseStop * 0.995   // Selling to close long: limit slightly below trigger
+                : preciseStop * 1.005;  // Buying to close short: limit slightly above trigger
+            const preciseStopLimit = parseFloat(exchange.priceToPrecision(symbol, stopLimitRaw));
+
+            // ccxt nested format — gets serialized to close[ordertype], close[price], close[price2]
+            // Use numbers (not strings) matching ccxt's official Kraken example
+            orderParams.close = {
+                ordertype: 'stop-loss-limit',
+                price: preciseStop,
+                price2: preciseStopLimit
+            };
+            console.log(`   📎 Conditional close: stop-loss-limit trigger=$${preciseStop}, limit=$${preciseStopLimit}`);
+        }
+
+        // Place market order WITH conditional close (stop-loss attached atomically)
         let order;
         try {
-            order = await exchange.createOrder(
+            order = await exchange.createMarketOrder(
                 symbol,
-                'market',
                 side,
-                quantity,
-                undefined,  // price (not needed for market orders)
-                params
+                preciseQty,
+                undefined,  // price (not used for market orders)
+                orderParams // includes close.ordertype, close.price, close.price2
             );
-            console.log(`   ✅ Order executed. ID: ${order.id}`);
-            console.log(`   📌 Conditional close order (stop-loss) attached`);
+            console.log(`   ✅ Market order executed. ID: ${order.id}`);
+            console.log(`   📊 Fill: ${order.filled} @ $${order.average?.toFixed(2) || 'pending'}`);
+            if (preciseStop) {
+                console.log(`   🛑 Conditional stop-loss-limit attached to entry order`);
+            }
         } catch (err) {
             console.error(`   ❌ Order failed: ${err.message}`);
-            // Return error but DON'T modify position manager state
-            // Caller must verify order before updating internal state
             return res.status(400).json({ 
                 error: `Order execution failed: ${err.message}`,
                 recovery: 'Position was not opened. No changes to account.'
             });
         }
 
-        // Place take-profit order AFTER entry is confirmed
+        // Place take-profit as a SEPARATE order (Kraken only allows 1 conditional close per order)
+        // This fires independently once the entry fills
         let tpOrder = null;
-        if (takeProfitPrice) {
+        if (preciseTP) {
             try {
                 const tpSide = side === 'buy' ? 'sell' : 'buy';
+                // Use take-profit-limit for controlled exit at target
+                // Limit price set 0.3% beyond trigger to ensure fill
+                const tpLimitRaw = side === 'buy'
+                    ? preciseTP * 0.997  // Selling to close long: limit slightly below TP trigger
+                    : preciseTP * 1.003; // Buying to close short: limit slightly above TP trigger
+                const preciseTpLimit = parseFloat(exchange.priceToPrecision(symbol, tpLimitRaw));
+                const tpQty = parseFloat(exchange.amountToPrecision(symbol, order.filled || preciseQty));
+
+                // ccxt createOrder 5th arg = Kraken 'price' field = trigger price
+                // params.price2 = Kraken 'price2' field = limit price
                 tpOrder = await exchange.createOrder(
                     symbol,
-                    'limit',
+                    'take-profit-limit',
                     tpSide,
-                    quantity,
-                    takeProfitPrice,
-                    {
-                        'postonly': true  // Post-only to avoid immediate execution
-                    }
+                    tpQty,
+                    preciseTP,            // trigger price (Kraken 'price')
+                    { price2: preciseTpLimit }  // limit price (Kraken 'price2')
                 );
-                console.log(`   🎯 Take-profit order placed at $${takeProfitPrice.toFixed(2)} (ID: ${tpOrder.id})`);
+                console.log(`   🎯 Take-profit-limit order placed: trigger=$${preciseTP}, limit=$${preciseTpLimit} (ID: ${tpOrder.id})`);
             } catch (err) {
-                // Take-profit failure is non-fatal (entry + stop are more important)
                 console.warn(`   ⚠️  Take-profit order failed: ${err.message}`);
+                console.warn(`   ⚠️  Position is still protected by conditional stop-loss`);
             }
         }
 
-        // Log the complete trade to data logger
-        dataLogger.logTrade({
-            symbol,
-            side,
-            entryPrice: order.average || entryPrice,
-            quantity,
-            timestamp: new Date(),
-            orderId: order.id,
-            stopPrice,
-            takeProfitPrice,
-            tpOrderId: tpOrder?.id || null,
-            status: 'OPEN',
-            closeOrderInfo: params.close || null
-        });
-
+        // Return success with order details
         res.json({
             success: true,
-            message: `Trade executed: ${side.toUpperCase()} ${quantity} ${symbol}`,
             order: {
                 id: order.id,
-                symbol,
-                side,
-                quantity,
-                price: order.average || entryPrice,
-                timestamp: order.datetime
+                symbol: order.symbol,
+                side: order.side,
+                amount: order.amount,
+                filled: order.filled,
+                average: order.average,
+                status: order.status,
+                conditionalClose: preciseStop ? {
+                    type: 'stop-loss-limit',
+                    triggerPrice: preciseStop,
+                    limitPrice: parseFloat(exchange.priceToPrecision(symbol, side === 'buy' ? preciseStop * 0.995 : preciseStop * 1.005))
+                } : null
             },
-            closeOrder: params.close ? { 
-                type: 'stop-loss-limit',
-                triggerPrice: stopPrice,
-                limitPrice: stopPrice
-            } : null,
             takeProfit: tpOrder ? {
                 id: tpOrder.id,
-                type: 'limit',
-                price: takeProfitPrice
+                type: 'take-profit-limit',
+                triggerPrice: preciseTP,
+                limitPrice: parseFloat(exchange.priceToPrecision(symbol, side === 'buy' ? preciseTP * 0.997 : preciseTP * 1.003))
             } : null
         });
+
     } catch (err) {
-        console.error('Trade execution error:', err);
-        res.status(500).json({ 
-            error: `Trade execution error: ${err.message}`,
-            recovery: 'Check bot logs for details'
-        });
+        console.error('Execute trade error:', err);
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -414,7 +398,32 @@ app.post('/api/cancel-all-trades', async (req, res) => {
     }
 });
 
-app.post('/api/bot/execution', (req, res) => {
+// Get wallet balance from Kraken
+app.get('/api/wallet-balance', async (req, res) => {
+    try {
+        if (!exchange) {
+            return res.status(503).json({ error: 'Exchange not connected' });
+        }
+
+        const balance = await exchange.fetchBalance();
+        const usdBalance = balance?.USD?.free ?? 0;
+        const totalUsd = balance?.USD?.total ?? 0;
+
+        res.json({
+            success: true,
+            balance: {
+                available: usdBalance,
+                total: totalUsd,
+                currency: 'USD'
+            }
+        });
+    } catch (err) {
+        console.error('Failed to fetch wallet balance:', err);
+        res.status(500).json({ error: `Failed to fetch balance: ${err.message}` });
+    }
+});
+
+app.post('/api/bot/execution', async (req, res) => {
     const { mode } = req.body || {};
     const normalized = typeof mode === 'string' ? mode.toUpperCase() : '';
     if (!['SIMULATED', 'LIVE'].includes(normalized)) {
@@ -432,11 +441,33 @@ app.post('/api/bot/execution', (req, res) => {
         // Log the command
         dataLogger.logCommand({ type: 'SET_EXECUTION_MODE', mode: normalized });
         
-        const message = normalized === 'LIVE' 
+        let message = normalized === 'LIVE' 
             ? '⚠️ LIVE TRADING ENABLED - Real trades will be executed' 
             : 'Simulated trading enabled - No real trades';
         
-        res.json({ success: true, message });
+        let balance = null;
+
+        // Fetch wallet balance when switching to LIVE mode
+        if (normalized === 'LIVE' && exchange) {
+            try {
+                const walletBalance = await exchange.fetchBalance();
+                const usdBalance = walletBalance?.USD?.free ?? 0;
+                balance = usdBalance;
+                message += ` | Wallet Balance: $${usdBalance.toFixed(2)}`;
+                
+                // Update data logger with live balance
+                dataLogger.updateStats({ currentBalance: usdBalance, availableBalance: usdBalance });
+            } catch (err) {
+                console.warn('Could not fetch wallet balance:', err.message);
+            }
+        } else if (normalized === 'SIMULATED') {
+            // Reset to simulated starting balance
+            const simulatedBalance = 10000;
+            dataLogger.resetData(simulatedBalance);  // Full reset with correct initialBalance
+            balance = simulatedBalance;
+        }
+        
+        res.json({ success: true, message, balance });
     } catch (error) {
         console.error('Failed to set execution mode:', error);
         res.status(500).json({ error: 'Failed to set execution mode' });
@@ -453,8 +484,7 @@ app.get('/', (req, res) => {
     PORT = await findAvailablePort(PORT);
     app.listen(PORT, () => {
         console.log(`\n📊 Dashboard running at http://localhost:${PORT}`);
-        console.log(`📈 View live trading data and statistics`);
-        console.log(`🔄 Live reload enabled - changes to config.js and bot.js detected automatically\n`);
+        console.log(`📈 View live trading data and statistics\n`);
     });
 })();
 

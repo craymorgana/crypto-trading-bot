@@ -1,4 +1,181 @@
-const { RSI, MACD, BollingerBands, ATR, ADX } = require('technicalindicators');
+const { RSI, MACD, BollingerBands, ATR, ADX, EMA, SMA, Stochastic } = require('technicalindicators');
+
+/**
+ * Calculate EMA (Exponential Moving Average) for trend detection
+ * @param {Array} ohlcv - CCXT OHLCV array
+ * @param {number} period - EMA period
+ * @returns {number} - Latest EMA value
+ */
+function calculateEMA(ohlcv, period) {
+    if (!ohlcv || ohlcv.length < period) return null;
+    const closes = ohlcv.map(c => c[4]);
+    const emaValues = EMA.calculate({ values: closes, period });
+    return emaValues[emaValues.length - 1];
+}
+
+/**
+ * Calculate SMA (Simple Moving Average)
+ * @param {Array} ohlcv - CCXT OHLCV array
+ * @param {number} period - SMA period
+ * @returns {number} - Latest SMA value
+ */
+function calculateSMA(ohlcv, period) {
+    if (!ohlcv || ohlcv.length < period) return null;
+    const closes = ohlcv.map(c => c[4]);
+    const smaValues = SMA.calculate({ values: closes, period });
+    return smaValues[smaValues.length - 1];
+}
+
+/**
+ * Calculate comprehensive trend filter using multiple EMAs
+ * Uses 9/21/50/200 EMA stack to determine trend strength and direction
+ * @param {Array} ohlcv - CCXT OHLCV array
+ * @returns {Object} - {trend: 'BULLISH'|'BEARISH'|'NEUTRAL', strength: 0-100, aligned: boolean}
+ */
+function calculateTrendFilter(ohlcv) {
+    if (!ohlcv || ohlcv.length < 200) {
+        // Fallback for shorter data
+        const ema9 = calculateEMA(ohlcv, 9);
+        const ema21 = calculateEMA(ohlcv, 21);
+        const currentPrice = ohlcv[ohlcv.length - 1][4];
+        
+        if (!ema9 || !ema21) return { trend: 'NEUTRAL', strength: 0, aligned: false };
+        
+        const bullish = currentPrice > ema9 && ema9 > ema21;
+        const bearish = currentPrice < ema9 && ema9 < ema21;
+        
+        return {
+            trend: bullish ? 'BULLISH' : (bearish ? 'BEARISH' : 'NEUTRAL'),
+            strength: bullish || bearish ? 60 : 30,
+            aligned: bullish || bearish,
+            ema9, ema21
+        };
+    }
+    
+    const currentPrice = ohlcv[ohlcv.length - 1][4];
+    const ema9 = calculateEMA(ohlcv, 9);
+    const ema21 = calculateEMA(ohlcv, 21);
+    const ema50 = calculateEMA(ohlcv, 50);
+    const ema200 = calculateEMA(ohlcv, 200);
+    
+    // Perfect bullish alignment: Price > EMA9 > EMA21 > EMA50 > EMA200
+    const bullishAlignment = currentPrice > ema9 && ema9 > ema21 && ema21 > ema50 && ema50 > ema200;
+    // Perfect bearish alignment: Price < EMA9 < EMA21 < EMA50 < EMA200
+    const bearishAlignment = currentPrice < ema9 && ema9 < ema21 && ema21 < ema50 && ema50 < ema200;
+    
+    // Score based on how many EMAs are aligned
+    let bullishScore = 0;
+    let bearishScore = 0;
+    
+    if (currentPrice > ema9) bullishScore += 25; else bearishScore += 25;
+    if (ema9 > ema21) bullishScore += 25; else bearishScore += 25;
+    if (ema21 > ema50) bullishScore += 25; else bearishScore += 25;
+    if (ema50 > ema200) bullishScore += 25; else bearishScore += 25;
+    
+    const trend = bullishScore > bearishScore ? 'BULLISH' : (bearishScore > bullishScore ? 'BEARISH' : 'NEUTRAL');
+    const strength = Math.max(bullishScore, bearishScore);
+    
+    return {
+        trend,
+        strength,
+        aligned: bullishAlignment || bearishAlignment,
+        perfectAlignment: bullishAlignment ? 'BULLISH' : (bearishAlignment ? 'BEARISH' : 'NONE'),
+        ema9, ema21, ema50, ema200,
+        currentPrice
+    };
+}
+
+/**
+ * Calculate Stochastic oscillator for oversold/overbought with momentum
+ * @param {Array} ohlcv - CCXT OHLCV array
+ * @param {number} period - Stochastic period (default: 14)
+ * @returns {Object} - {k, d, signal, crossover}
+ */
+function calculateStochastic(ohlcv, period = 14) {
+    if (!ohlcv || ohlcv.length < period + 3) {
+        return { k: 50, d: 50, signal: 'NEUTRAL', crossover: 'NONE' };
+    }
+    
+    const stochValues = Stochastic.calculate({
+        high: ohlcv.map(c => c[2]),
+        low: ohlcv.map(c => c[3]),
+        close: ohlcv.map(c => c[4]),
+        period,
+        signalPeriod: 3
+    });
+    
+    const current = stochValues[stochValues.length - 1];
+    const previous = stochValues[stochValues.length - 2];
+    
+    if (!current || !previous) return { k: 50, d: 50, signal: 'NEUTRAL', crossover: 'NONE' };
+    
+    // Detect crossovers
+    let crossover = 'NONE';
+    if (previous.k < previous.d && current.k > current.d) crossover = 'BULLISH';
+    if (previous.k > previous.d && current.k < current.d) crossover = 'BEARISH';
+    
+    // Signal based on oversold/overbought
+    let signal = 'NEUTRAL';
+    if (current.k < 20 && current.d < 20) signal = 'OVERSOLD';
+    if (current.k > 80 && current.d > 80) signal = 'OVERBOUGHT';
+    
+    return {
+        k: current.k,
+        d: current.d,
+        signal,
+        crossover
+    };
+}
+
+/**
+ * Calculate momentum score combining multiple indicators
+ * @param {Array} ohlcv - CCXT OHLCV array
+ * @returns {Object} - {momentum: 'BULLISH'|'BEARISH'|'NEUTRAL', score: 0-100}
+ */
+function calculateMomentum(ohlcv) {
+    if (!ohlcv || ohlcv.length < 26) {
+        return { momentum: 'NEUTRAL', score: 0 };
+    }
+    
+    const indicators = calculateIndicators(ohlcv);
+    const stoch = calculateStochastic(ohlcv);
+    
+    let bullishPoints = 0;
+    let bearishPoints = 0;
+    
+    // RSI contribution (0-25 points)
+    if (indicators.rsi) {
+        if (indicators.rsi.value > 50 && indicators.rsi.value < 70) bullishPoints += 20;
+        else if (indicators.rsi.value < 50 && indicators.rsi.value > 30) bearishPoints += 20;
+        else if (indicators.rsi.oversold) bullishPoints += 25; // Bounce potential
+        else if (indicators.rsi.overbought) bearishPoints += 25; // Reversal potential
+    }
+    
+    // MACD contribution (0-25 points)
+    if (indicators.macd) {
+        if (indicators.macd.bullish) bullishPoints += 25;
+        else if (indicators.macd.bearish) bearishPoints += 25;
+    }
+    
+    // Stochastic contribution (0-25 points)
+    if (stoch.crossover === 'BULLISH') bullishPoints += 25;
+    else if (stoch.crossover === 'BEARISH') bearishPoints += 25;
+    else if (stoch.signal === 'OVERSOLD') bullishPoints += 15;
+    else if (stoch.signal === 'OVERBOUGHT') bearishPoints += 15;
+    
+    // Price action contribution (0-25 points)
+    const recentCandles = ohlcv.slice(-5);
+    const bullishCandles = recentCandles.filter(c => c[4] > c[1]).length;
+    if (bullishCandles >= 4) bullishPoints += 25;
+    else if (bullishCandles <= 1) bearishPoints += 25;
+    else if (bullishCandles >= 3) bullishPoints += 15;
+    else if (bullishCandles <= 2) bearishPoints += 15;
+    
+    const score = Math.max(bullishPoints, bearishPoints);
+    const momentum = bullishPoints > bearishPoints ? 'BULLISH' : (bearishPoints > bullishPoints ? 'BEARISH' : 'NEUTRAL');
+    
+    return { momentum, score, bullishPoints, bearishPoints, stochastic: stoch };
+}
 
 /**
  * Calculate volume filter - checks if current volume is above average
@@ -333,5 +510,10 @@ module.exports = {
     detectHiddenBullishDivergenceMACD,
     calculateVolumeFilter,
     calculateVolatility,
-    calculateMarketRegime
+    calculateMarketRegime,
+    calculateEMA,
+    calculateSMA,
+    calculateTrendFilter,
+    calculateStochastic,
+    calculateMomentum
 };

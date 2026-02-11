@@ -5,7 +5,7 @@
  */
 
 const { analyzeCandlesticks } = require('./candlesticks');
-const { calculateIndicators, getIndicatorSignal, detectHiddenBullishDivergenceRSI, detectHiddenBullishDivergenceMACD, calculateVolumeFilter, calculateVolatility, calculateMarketRegime } = require('./indicators');
+const { calculateIndicators, getIndicatorSignal, detectHiddenBullishDivergenceRSI, detectHiddenBullishDivergenceMACD, calculateVolumeFilter, calculateVolatility, calculateMarketRegime, calculateTrendFilter, calculateMomentum, calculateStochastic } = require('./indicators');
 const { calculateFibonacciLevels, getFibLevelsNear } = require('./fibonacci');
 const { calculateHarmonicLevels, projectHarmonicD, validateHarmonicPattern, validateHarmonicRatios } = require('./harmonics');
 
@@ -251,16 +251,18 @@ function analyzeForScalping(ohlcv, options = {}) {
 }
 
 /**
- * Swing analysis using Fibonacci + Harmonics (high timeframe)
+ * Enhanced Swing analysis combining trend, momentum, patterns, and levels
+ * Uses multi-factor confirmation for higher quality signals
  * @param {Array} ohlcv - CCXT OHLCV array
  * @param {Object} options - Analysis configuration
  * @returns {Object}
  */
 function analyzeForSwinging(ohlcv, options = {}) {
     const opts = {
-        minConfidenceThreshold: options.minConfidenceThreshold || 65,
+        minConfidenceThreshold: options.minConfidenceThreshold || 45,
         fibLookback: options.fibLookback || 60,
         harmonicTolerance: options.harmonicTolerance || 3,
+        requireTrendAlignment: options.requireTrendAlignment !== false,
         ...options
     };
 
@@ -279,13 +281,54 @@ function analyzeForSwinging(ohlcv, options = {}) {
         scores: {}
     };
 
-    // Fibonacci Support/Resistance (for target levels, not entry filter)
+    // ===== 1. TREND ANALYSIS (0-30 points) =====
+    try {
+        const trendFilter = calculateTrendFilter(ohlcv);
+        analysis.signals.trend = trendFilter;
+        
+        // Score based on trend alignment
+        if (trendFilter.aligned) {
+            analysis.scores.trend = 30;
+        } else if (trendFilter.strength >= 75) {
+            analysis.scores.trend = 25;
+        } else if (trendFilter.strength >= 50) {
+            analysis.scores.trend = 15;
+        } else {
+            analysis.scores.trend = 5;
+        }
+    } catch (err) {
+        analysis.signals.trend = { error: err.message, trend: 'NEUTRAL' };
+        analysis.scores.trend = 0;
+    }
+
+    // ===== 2. MOMENTUM ANALYSIS (0-25 points) =====
+    try {
+        const momentum = calculateMomentum(ohlcv);
+        analysis.signals.momentum = momentum;
+        analysis.scores.momentum = Math.round(momentum.score * 0.25);
+    } catch (err) {
+        analysis.signals.momentum = { error: err.message, momentum: 'NEUTRAL' };
+        analysis.scores.momentum = 0;
+    }
+
+    // ===== 3. CANDLESTICK PATTERNS (0-20 points) =====
+    try {
+        const candleAnalysis = analyzeCandlesticks(ohlcv.slice(0, -1));
+        analysis.signals.candlesticks = candleAnalysis;
+        // Scale candlestick confidence (0-40) to 0-20 points
+        analysis.scores.candlesticks = Math.round((candleAnalysis.confidence / 100) * 20);
+    } catch (err) {
+        analysis.signals.candlesticks = { error: err.message, signal: 'NEUTRAL' };
+        analysis.scores.candlesticks = 0;
+    }
+
+    // ===== 4. FIBONACCI LEVELS (0-15 points) =====
     try {
         const slice = ohlcv.slice(-opts.fibLookback);
         const high = Math.max(...slice.map(c => c[2]));
         const low = Math.min(...slice.map(c => c[3]));
         const fibLevels = calculateFibonacciLevels(high, low);
-        const nearbyLevels = getFibLevelsNear(analysis.currentPrice, fibLevels, 3.0);  // 3% tolerance
+        const nearbyLevels = getFibLevelsNear(analysis.currentPrice, fibLevels, 2.0);  // 2% tolerance
 
         analysis.signals.fibonacci = {
             fibLevels,
@@ -293,60 +336,48 @@ function analyzeForSwinging(ohlcv, options = {}) {
             hasSupport: nearbyLevels.length > 0
         };
 
-        // Fibonacci adds 20 points if price is near a level
-        analysis.scores.fibonacci = nearbyLevels.length > 0 ? 20 : 0;
+        analysis.scores.fibonacci = nearbyLevels.length > 0 ? 15 : 0;
     } catch (err) {
         analysis.signals.fibonacci = { error: err.message };
         analysis.scores.fibonacci = 0;
     }
 
-    // Harmonics (Gartley + Bat + Butterfly) - Properly detect XABCD patterns
+    // ===== 5. HARMONIC PATTERNS (0-10 points) =====
     try {
-        // Find actual swing points in recent price action (last 80 candles)
         const recentOhlcv = ohlcv.slice(-80);
         const swingPoints = findSwingPoints(recentOhlcv);
         
-        // We need at least 4 swing points (X, A, B, C) to form a pattern
         if (swingPoints.length >= 4) {
-            // Take last 4 swing points
             const [X, A, B, C] = swingPoints.slice(-4);
             const prices = [X.price, A.price, B.price, C.price];
             
-            // First validate the XABC ratios match known patterns
-            const gartleyRatios = validateHarmonicRatios(prices, 'gartley', 15);  // 15% ratio tolerance
+            const gartleyRatios = validateHarmonicRatios(prices, 'gartley', 15);
             const batRatios = validateHarmonicRatios(prices, 'bat', 15);
             const butterflyRatios = validateHarmonicRatios(prices, 'butterfly', 15);
 
-            // Only check D validation if pattern ratios are valid
             let validPattern = null;
             if (gartleyRatios.valid) {
                 const validation = validateHarmonicPattern(analysis.currentPrice, prices, 'gartley', 8);
-                if (validation.valid) validPattern = validation;
+                if (validation.valid) validPattern = { name: 'gartley', ...validation };
             }
             if (!validPattern && batRatios.valid) {
                 const validation = validateHarmonicPattern(analysis.currentPrice, prices, 'bat', 8);
-                if (validation.valid) validPattern = validation;
+                if (validation.valid) validPattern = { name: 'bat', ...validation };
             }
             if (!validPattern && butterflyRatios.valid) {
                 const validation = validateHarmonicPattern(analysis.currentPrice, prices, 'butterfly', 8);
-                if (validation.valid) validPattern = validation;
+                if (validation.valid) validPattern = { name: 'butterfly', ...validation };
             }
 
             analysis.signals.harmonics = {
                 swingPoints: swingPoints.slice(-4),
-                gartleyRatios,
-                batRatios,
-                butterflyRatios,
+                validPattern,
                 isValid: Boolean(validPattern)
             };
 
-            // Harmonics adds 25 points if BOTH ratios and D validation pass
-            analysis.scores.harmonics = validPattern ? 25 : 0;
+            analysis.scores.harmonics = validPattern ? 10 : 0;
         } else {
-            analysis.signals.harmonics = {
-                swingPoints: [],
-                isValid: false
-            };
+            analysis.signals.harmonics = { swingPoints: [], isValid: false };
             analysis.scores.harmonics = 0;
         }
     } catch (err) {
@@ -354,41 +385,109 @@ function analyzeForSwinging(ohlcv, options = {}) {
         analysis.scores.harmonics = 0;
     }
 
-    const scores = [];
-    if (analysis.scores.fibonacci > 0) scores.push(analysis.scores.fibonacci);
-    if (analysis.scores.harmonics > 0) scores.push(analysis.scores.harmonics);
+    // ===== 6. VOLUME & VOLATILITY FILTER (Bonus 0-10 points) =====
+    try {
+        const volumeFilter = calculateVolumeFilter(ohlcv, 20);
+        const volatility = calculateVolatility(ohlcv, 14);
+        const marketRegime = calculateMarketRegime(ohlcv, 14);
 
-    // If no scores, return neutral with low confidence
-    const confidencePercent = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / Math.max(scores.length, 1)) : 0;
+        analysis.signals.filters = {
+            volume: volumeFilter,
+            volatility: volatility,
+            marketRegime: marketRegime
+        };
 
-    let finalSignal = 'NEUTRAL';
+        let filterBonus = 0;
+        if (volumeFilter.isAboveAverage) filterBonus += 5;
+        if (marketRegime.regime === 'trending' && marketRegime.strength > 30) filterBonus += 5;
+
+        analysis.scores.filters = filterBonus;
+    } catch (err) {
+        analysis.signals.filters = { error: err.message };
+        analysis.scores.filters = 0;
+    }
+
+    // ===== CALCULATE TOTAL CONFIDENCE SCORE =====
+    const totalScore = 
+        (analysis.scores.trend || 0) +
+        (analysis.scores.momentum || 0) +
+        (analysis.scores.candlesticks || 0) +
+        (analysis.scores.fibonacci || 0) +
+        (analysis.scores.harmonics || 0) +
+        (analysis.scores.filters || 0);
     
-    // Signal logic: Use Fibonacci OR Harmonics (not requiring both)
-    if (analysis.signals.harmonics?.isValid) {
-        const projection = projectHarmonicD([
-            ohlcv[ohlcv.length - 60][4],
-            ohlcv[ohlcv.length - 45][4],
-            ohlcv[ohlcv.length - 30][4],
-            ohlcv[ohlcv.length - 1][4]
-        ], 'gartley');
-        if (!projection.error && projection.direction === 'bullish') {
-            finalSignal = 'BULLISH';
-        } else if (!projection.error && projection.direction === 'bearish') {
-            finalSignal = 'BEARISH';
+    // Max possible: 30 + 25 + 20 + 15 + 10 + 10 = 110 -> normalize to 100
+    const confidencePercent = Math.min(100, Math.round(totalScore));
+
+    // ===== DETERMINE FINAL SIGNAL =====
+    // Use strict multi-factor consensus - REQUIRE trend + momentum agreement
+    const trendSignal = analysis.signals.trend?.trend || 'NEUTRAL';
+    const trendStrength = analysis.signals.trend?.strength || 0;
+    const momentumSignal = analysis.signals.momentum?.momentum || 'NEUTRAL';
+    const momentumScore = analysis.signals.momentum?.score || 0;
+    const candleSignal = analysis.signals.candlesticks?.signal || 'NEUTRAL';
+    
+    let finalSignal = 'NEUTRAL';
+    let signalQuality = 'WEAK';
+    
+    // STRICT REQUIREMENT: Trend and momentum must both agree
+    const trendMomentumAlign = (trendSignal === momentumSignal) && trendSignal !== 'NEUTRAL';
+    
+    // Additional score based on alignment
+    let alignmentBonus = 0;
+    if (trendMomentumAlign) {
+        alignmentBonus += 10;
+        // Check if candlestick pattern also agrees
+        if (candleSignal === trendSignal) {
+            alignmentBonus += 10;
+            signalQuality = 'STRONG';
+        } else if (candleSignal === 'NEUTRAL') {
+            signalQuality = 'MODERATE';
+        } else {
+            // Candlestick disagrees - reduce confidence
+            signalQuality = 'WEAK';
+            alignmentBonus -= 5;
         }
-    } else if (analysis.signals.fibonacci?.hasSupport) {
-        // Use last 3 candles to determine direction at Fib level
-        const recentCandles = ohlcv.slice(-4, -1);
-        const bullishCount = recentCandles.filter(c => c[4] > c[1]).length;
-        const bearishCount = recentCandles.filter(c => c[4] < c[1]).length;
-        
-        if (bullishCount >= 2) finalSignal = 'BULLISH';
-        else if (bearishCount >= 2) finalSignal = 'BEARISH';
+    }
+    
+    // Only generate signal if trend and momentum align
+    if (trendMomentumAlign && trendStrength >= 50) {
+        finalSignal = trendSignal;
+    }
+    // Relaxed mode: If trend is very strong (75+), allow signal even with weak momentum
+    else if (trendStrength >= 75 && trendSignal !== 'NEUTRAL' && momentumSignal !== (trendSignal === 'BULLISH' ? 'BEARISH' : 'BULLISH')) {
+        finalSignal = trendSignal;
+        signalQuality = 'MODERATE';
+    }
+    // High momentum with any trend direction
+    else if (momentumScore >= 60 && momentumSignal !== 'NEUTRAL' && trendSignal !== (momentumSignal === 'BULLISH' ? 'BEARISH' : 'BULLISH')) {
+        finalSignal = momentumSignal;
+        signalQuality = 'MODERATE';
+    }
+    
+    // Apply alignment bonus to confidence
+    const adjustedConfidence = Math.min(100, confidencePercent + alignmentBonus);
+    
+    // Block signals that conflict with very strong trends
+    if (opts.requireTrendAlignment && trendStrength >= 80) {
+        if (finalSignal === 'BULLISH' && trendSignal === 'BEARISH') {
+            finalSignal = 'NEUTRAL';
+        }
+        if (finalSignal === 'BEARISH' && trendSignal === 'BULLISH') {
+            finalSignal = 'NEUTRAL';
+        }
     }
 
     analysis.finalSignal = finalSignal;
-    analysis.confidence = Math.round(confidencePercent);
-    analysis.meetsThreshold = confidencePercent >= opts.minConfidenceThreshold;
+    analysis.confidence = adjustedConfidence;
+    analysis.signalQuality = signalQuality;
+    analysis.meetsThreshold = adjustedConfidence >= opts.minConfidenceThreshold && finalSignal !== 'NEUTRAL';
+    analysis.alignment = { 
+        trendMomentum: trendMomentumAlign, 
+        trendStrength, 
+        momentumScore,
+        bonus: alignmentBonus 
+    };
 
     return analysis;
 }

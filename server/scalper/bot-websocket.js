@@ -155,8 +155,8 @@ async function runBot() {
                     totalReturn: ((positionManager.accountBalance - positionManager.initialBalance) / positionManager.initialBalance) * 100
                 });
 
-                // 4. Check for new entry signals
-                if (analysis.meetsThreshold && analysis.finalSignal !== 'NEUTRAL') {
+                // 4. Check for new entry signals (BULLISH only - long-only trading)
+                if (analysis.meetsThreshold && analysis.finalSignal === 'BULLISH') {
                     const closedCandle = ohlcv[ohlcv.length - 2];
                     const entryPrice = currentCandle[4]; // Use current candle close price
 
@@ -164,13 +164,8 @@ async function runBot() {
                     const candleRange = closedCandle[2] - closedCandle[3];
                     const stopLossDistance = candleRange * 1.5;
 
-                    let stopPrice;
-
-                    if (analysis.finalSignal === 'BULLISH') {
-                        stopPrice = closedCandle[3] - stopLossDistance; // Below the low
-                    } else {
-                        stopPrice = closedCandle[2] + stopLossDistance; // Above the high
-                    }
+                    // BULLISH only: Stop below the low
+                    const stopPrice = closedCandle[3] - stopLossDistance;
 
                     // Calculate position size and check if we can enter
                     const sizing = positionManager.calculatePositionSize(
@@ -287,21 +282,17 @@ async function runBot() {
                         totalReturn: ((positionManager.accountBalance - positionManager.initialBalance) / positionManager.initialBalance) * 100
                     });
 
-                    // 4. Check for new entry signals
-                    if (analysis.meetsThreshold && analysis.finalSignal !== 'NEUTRAL') {
+                    // 4. Check for new entry signals (BULLISH only - long-only trading)
+                    if (analysis.meetsThreshold && analysis.finalSignal === 'BULLISH') {
                         const closedCandle = ohlcv[ohlcv.length - 2];
 
                         // Calculate ATR for stop loss (simplified: 1.5x current candle range)
                         const candleRange = closedCandle[2] - closedCandle[3];
                         const stopLossDistance = candleRange * 1.5;
 
-                        let stopPrice, entryPrice = currentPrice;
-
-                        if (analysis.finalSignal === 'BULLISH') {
-                            stopPrice = closedCandle[3] - stopLossDistance; // Below the low
-                        } else {
-                            stopPrice = closedCandle[2] + stopLossDistance; // Above the high
-                        }
+                        // BULLISH only: Stop below the low
+                        const entryPrice = currentPrice;
+                        const stopPrice = closedCandle[3] - stopLossDistance;
 
                         // Calculate position size and check if we can enter
                         const sizing = positionManager.calculatePositionSize(entryPrice, stopPrice, analysis.finalSignal);

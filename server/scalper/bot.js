@@ -123,21 +123,17 @@ async function runBot() {
                             totalReturn: ((positionManager.accountBalance - positionManager.initialBalance) / positionManager.initialBalance) * 100
                         });
 
-                        // 4. Check for new entry signals (only when not paused and in scalping mode)
-                        if (!botState.paused && analysis.meetsThreshold && analysis.finalSignal !== 'NEUTRAL') {
+                        // 4. Check for new entry signals (only when not paused and BULLISH only - long-only trading)
+                        if (!botState.paused && analysis.meetsThreshold && analysis.finalSignal === 'BULLISH') {
                             const closedCandle = ohlcv[ohlcv.length - 2];
 
                             // Calculate ATR for stop loss (simplified: candle range * multiplier)
                             const candleRange = closedCandle[2] - closedCandle[3];
                             const stopLossDistance = candleRange * (activeParams.stopMultiplier || 1.5);
 
-                            let stopPrice, entryPrice = currentPrice;
-
-                            if (analysis.finalSignal === 'BULLISH') {
-                                stopPrice = closedCandle[3] - stopLossDistance; // Below the low
-                            } else {
-                                stopPrice = closedCandle[2] + stopLossDistance; // Above the high
-                            }
+                            // BULLISH only: Stop below the low
+                            const entryPrice = currentPrice;
+                            const stopPrice = closedCandle[3] - stopLossDistance;
 
                             // Calculate position size and check if we can enter
                             const sizing = positionManager.calculatePositionSize(

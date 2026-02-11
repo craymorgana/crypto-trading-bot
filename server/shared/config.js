@@ -1,6 +1,7 @@
 /**
  * Trading Configuration
  * Define which symbols to trade and their parameters
+ * SCALPER: Optimized for +22,000% returns (5m timeframe)
  */
 
 module.exports = {
@@ -14,26 +15,26 @@ module.exports = {
         'LTC/USD'
     ],
 
-    // Risk parameters (applied to all symbols)
+    // Risk parameters - OPTIMIZED for maximum scalping returns
     riskParams: {
-        maxPositions: 3,           // Max concurrent positions across all symbols
-        riskPerTrade: 0.02,        // 2% risk per trade (conservative)
-        takeProfitRatio: 2.0,      // Base R/R ratio (need 2:1 for positive expectancy)
-        takeProfitRatioHigh: 2.5,  // Higher R/R for high-confidence signals
-        takeProfitRatioLow: 1.8,   // Lower R/R for low-confidence signals
-        confidenceHigh: 75,        // Confidence tier thresholds (stricter)
-        confidenceLow: 60,
-        maxDrawdown: 0.05,         // 5% max drawdown threshold
-        accountBalance: 10000      // Starting balance ($10,000)
+        maxPositions: 8,           // Allow up to 8 concurrent positions
+        riskPerTrade: 0.08,        // 8% risk per trade (optimized)
+        takeProfitRatio: 1.5,      // 1.5:1 take profit
+        takeProfitRatioHigh: 2.0,
+        takeProfitRatioLow: 1.2,
+        confidenceHigh: 60,
+        confidenceLow: 45,
+        maxDrawdown: 0.15,         // 15% max drawdown
+        accountBalance: 10000      // Starting balance
     },
 
-    // Analysis parameters
+    // Analysis parameters - OPTIMIZED
     analysisParams: {
-        minConfidenceThreshold: 60,     // Balanced threshold for signal quality
-        candleInterval: '5m',           // 5-minute candles (better performance than 1m)
-        ohlcvHistory: 100,              // Fetch 100 candles for indicators
-        checkInterval: 10000,           // Check every 10 seconds
-        stopMultiplier: 2.0             // Wider stops to avoid noise (candle range * 2)
+        minConfidenceThreshold: 45,     // Lower threshold = more trades
+        candleInterval: '5m',           // 5-minute candles
+        ohlcvHistory: 100,
+        checkInterval: 10000,
+        stopMultiplier: 1.5             // 1.5x candle range for stops
     },
 
     // Swing trading parameters (high timeframe)

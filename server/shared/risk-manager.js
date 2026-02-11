@@ -197,7 +197,7 @@ class PositionManager {
      * @param {string} symbol - Optional: filter by symbol
      * @returns {Array} - Positions that should be closed
      */
-    checkExitSignals(currentPrice, symbol = null) {
+    checkExitSignals(currentPrice, symbol = null, trailingConfig = null) {
         const exitCandidates = [];
 
         this.positions.forEach(trade => {
@@ -208,11 +208,43 @@ class PositionManager {
 
             let exitReason = null;
 
+            // Update trailing stop if enabled
+            if (trailingConfig && trailingConfig.useTrailingStop) {
+                const stopDistance = Math.abs(trade.entryPrice - trade.stopPrice);
+                const targetDistance = Math.abs(trade.targetPrice - trade.entryPrice);
+                const activationDistance = targetDistance * trailingConfig.trailActivation;
+                
+                if (trade.signal === 'BULLISH') {
+                    const currentGain = currentPrice - trade.entryPrice;
+                    // Activate trailing stop when price moves 50% toward target
+                    if (currentGain >= activationDistance) {
+                        const trailAmount = currentGain * trailingConfig.trailDistance;
+                        const newStop = currentPrice - trailAmount;
+                        // Only move stop up, never down
+                        if (newStop > trade.stopPrice) {
+                            trade.stopPrice = newStop;
+                            trade.trailingActive = true;
+                        }
+                    }
+                } else {
+                    const currentGain = trade.entryPrice - currentPrice;
+                    if (currentGain >= activationDistance) {
+                        const trailAmount = currentGain * trailingConfig.trailDistance;
+                        const newStop = currentPrice + trailAmount;
+                        // Only move stop down, never up
+                        if (newStop < trade.stopPrice) {
+                            trade.stopPrice = newStop;
+                            trade.trailingActive = true;
+                        }
+                    }
+                }
+            }
+
             // Check stop loss (tighter for scalping)
             if (trade.signal === 'BULLISH' && currentPrice <= trade.stopPrice) {
-                exitReason = 'STOP_HIT';
+                exitReason = trade.trailingActive ? 'TRAILING_STOP' : 'STOP_HIT';
             } else if (trade.signal === 'BEARISH' && currentPrice >= trade.stopPrice) {
-                exitReason = 'STOP_HIT';
+                exitReason = trade.trailingActive ? 'TRAILING_STOP' : 'STOP_HIT';
             }
 
             // Check take profit target

@@ -1,5 +1,6 @@
 /**
- * Swing Trading Backtest using Fibonacci + Harmonics on High Timeframes
+ * Swing Trading Backtest using Enhanced Multi-Factor Analysis
+ * Tests trend-aligned, momentum-confirmed entries
  */
 
 require('dotenv').config();
@@ -7,15 +8,100 @@ const ccxt = require('ccxt');
 const { analyzeForSwinging } = require('../shared/unified-analysis');
 const PositionManager = require('../shared/risk-manager');
 const dataLogger = require('../shared/data-logger');
+const tradeAnalyzer = require('../shared/trade-analyzer');
 const config = require('../shared/config');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Swing trading scenarios - TARGETING 10%+ RETURNS
+// Enhanced Swing trading scenarios - TARGETING 15%+ RETURNS
 const swingScenarios = {
-    // Current champion - baseline
-    current_champion: {
-        name: '🏆 CHAMPION +9.45%',
+    // ===== NEW ENHANCED STRATEGIES =====
+    enhanced_balanced: {
+        name: '🚀 ENHANCED BALANCED',
+        minConfidenceThreshold: 45,
+        riskPerTrade: 0.12,
+        takeProfitRatio: 2.0,
+        maxPositions: 5,
+        candleInterval: '4h',
+        stopMultiplier: 0.5,        // Tighter stops for better R:R
+        bullishOnly: false,
+        bearishOnly: false,         // Trade BOTH directions
+        requireTrendAlignment: true,
+        requireDivergence: false,
+        requireVolume: false,
+        requireTrending: true,
+        minRRRatio: 1.0              // Only take trades with 1:1+ R:R
+    },
+    enhanced_aggressive: {
+        name: '💥 ENHANCED AGGRESSIVE',
+        minConfidenceThreshold: 40,
+        riskPerTrade: 0.20,
+        takeProfitRatio: 2.5,
+        maxPositions: 6,
+        candleInterval: '4h',
+        stopMultiplier: 0.5,
+        bullishOnly: false,
+        bearishOnly: false,
+        requireTrendAlignment: true,
+        requireDivergence: false,
+        requireVolume: false,
+        requireTrending: true,
+        minRRRatio: 1.0
+    },
+    enhanced_conservative: {
+        name: '🛡️ ENHANCED CONSERVATIVE',
+        minConfidenceThreshold: 55,
+        riskPerTrade: 0.08,
+        takeProfitRatio: 1.8,
+        maxPositions: 4,
+        candleInterval: '4h',
+        stopMultiplier: 1.0,
+        bullishOnly: false,
+        bearishOnly: false,
+        requireTrendAlignment: true,
+        requireDivergence: false,
+        requireVolume: false,
+        requireTrending: true
+    },
+    trend_following: {
+        name: '📈 TREND FOLLOWING',
+        minConfidenceThreshold: 50,
+        riskPerTrade: 0.15,
+        takeProfitRatio: 3.0,
+        maxPositions: 5,
+        candleInterval: '4h',
+        stopMultiplier: 0.5,
+        bullishOnly: false,
+        bearishOnly: false,
+        requireTrendAlignment: true,
+        requireDivergence: false,
+        requireVolume: true,
+        requireTrending: true,
+        minRRRatio: 1.0
+    },
+    // ===== OPTIMAL CONFIGURATION - 28%+ RETURN =====
+    high_confidence: {
+        name: '🎯 OPTIMAL HIGH RETURN',
+        minConfidenceThreshold: 50,   // Balanced - enough signals with quality
+        riskPerTrade: 0.50,           // Aggressive but not extreme (50% per trade)
+        takeProfitRatio: 1.5,
+        maxPositions: 10,
+        candleInterval: '4h',
+        stopMultiplier: 0.5,          // Tight stops for good R:R with Fib targets
+        bullishOnly: false,
+        bearishOnly: false,
+        requireTrendAlignment: true,   // Only trade with the trend
+        requireDivergence: false,
+        requireVolume: true,           // Volume confirmation for quality
+        requireTrending: true,         // ADX filter for trending markets
+        useTrailingStop: true,
+        trailActivation: 0.5,
+        trailDistance: 0.3,
+        minRRRatio: 0.7               // Accept trades with 0.7:1+ R:R
+    },
+    // ===== LEGACY SCENARIOS FOR COMPARISON =====
+    legacy_champion: {
+        name: '🏆 LEGACY CHAMPION',
         minConfidenceThreshold: 23,
         riskPerTrade: 0.15,
         takeProfitRatio: 1.2,
@@ -24,144 +110,116 @@ const swingScenarios = {
         stopMultiplier: 0.6,
         bullishOnly: false,
         bearishOnly: true,
+        requireTrendAlignment: false,
         requireDivergence: false,
         requireVolume: false,
         requireTrending: false
     },
-    // Lower risk, more positions
-    conservative_diversified: {
-        name: '🛡️ CONSERVATIVE 13%',
-        minConfidenceThreshold: 23,
-        riskPerTrade: 0.13,
-        takeProfitRatio: 1.2,
-        maxPositions: 7,
+    both_directions_12: {
+        name: '↕️ BOTH DIRECTIONS 12%',
+        minConfidenceThreshold: 45,
+        riskPerTrade: 0.12,
+        takeProfitRatio: 2.0,
+        maxPositions: 5,
         candleInterval: '4h',
-        stopMultiplier: 0.6,
+        stopMultiplier: 0.8,
         bullishOnly: false,
-        bearishOnly: true,
+        bearishOnly: false,         // Key: trade both!
+        requireTrendAlignment: false,
         requireDivergence: false,
         requireVolume: false,
         requireTrending: false
     },
-    // Moderate risk, more positions
-    moderate_diversified: {
-        name: '⚖️ MODERATE 14%',
-        minConfidenceThreshold: 23,
+    momentum_trader: {
+        name: '⚡ MOMENTUM TRADER',
+        minConfidenceThreshold: 50,
         riskPerTrade: 0.14,
-        takeProfitRatio: 1.2,
-        maxPositions: 7,
+        takeProfitRatio: 2.2,
+        maxPositions: 5,
         candleInterval: '4h',
-        stopMultiplier: 0.6,
+        stopMultiplier: 0.85,
         bullishOnly: false,
-        bearishOnly: true,
+        bearishOnly: false,
+        requireTrendAlignment: true,
         requireDivergence: false,
         requireVolume: false,
-        requireTrending: false
+        requireTrending: true
     },
-    // Higher risk, more positions
-    aggressive_diversified: {
-        name: '🚀 AGGRESSIVE 16%',
-        minConfidenceThreshold: 23,
-        riskPerTrade: 0.16,
-        takeProfitRatio: 1.2,
-        maxPositions: 7,
+    swing_optimal: {
+        name: '🌟 SWING OPTIMAL',
+        minConfidenceThreshold: 55,
+        riskPerTrade: 0.12,
+        takeProfitRatio: 2.0,
+        maxPositions: 5,
         candleInterval: '4h',
-        stopMultiplier: 0.6,
+        stopMultiplier: 0.9,
         bullishOnly: false,
-        bearishOnly: true,
+        bearishOnly: false,
+        requireTrendAlignment: true,
         requireDivergence: false,
         requireVolume: false,
-        requireTrending: false
+        requireTrending: true
     },
-    // Max risk, more positions
-    ultra_diversified: {
-        name: '💥 ULTRA 17%',
-        minConfidenceThreshold: 23,
-        riskPerTrade: 0.17,
-        takeProfitRatio: 1.2,
-        maxPositions: 7,
-        candleInterval: '4h',
-        stopMultiplier: 0.6,
-        bullishOnly: false,
-        bearishOnly: true,
-        requireDivergence: false,
-        requireVolume: false,
-        requireTrending: false
-    },
-    // 15% with 8 positions
-    max_diversified: {
-        name: '🎲 MAX DIV 8 POS',
-        minConfidenceThreshold: 23,
+    max_return: {
+        name: '💰 MAX RETURN',
+        minConfidenceThreshold: 50,
         riskPerTrade: 0.15,
-        takeProfitRatio: 1.2,
-        maxPositions: 8,
+        takeProfitRatio: 2.2,
+        maxPositions: 5,
         candleInterval: '4h',
-        stopMultiplier: 0.6,
+        stopMultiplier: 0.85,
         bullishOnly: false,
-        bearishOnly: true,
+        bearishOnly: false,
+        requireTrendAlignment: true,
         requireDivergence: false,
         requireVolume: false,
-        requireTrending: false
+        requireTrending: true
     },
-    // 15% with tighter stops
-    tight_diversified: {
-        name: '✂️ TIGHT 15%',
-        minConfidenceThreshold: 23,
+    // ===== NEW OPTIMIZED SCENARIOS =====
+    strict_quality: {
+        name: '✨ STRICT QUALITY',
+        minConfidenceThreshold: 65,
+        riskPerTrade: 0.14,
+        takeProfitRatio: 2.0,
+        maxPositions: 4,
+        candleInterval: '4h',
+        stopMultiplier: 0.9,
+        bullishOnly: false,
+        bearishOnly: false,
+        requireTrendAlignment: true,
+        requireDivergence: false,
+        requireVolume: true,
+        requireTrending: true
+    },
+    precision_swing: {
+        name: '🎯 PRECISION SWING',
+        minConfidenceThreshold: 58,
+        riskPerTrade: 0.10,
+        takeProfitRatio: 2.5,
+        maxPositions: 5,
+        candleInterval: '4h',
+        stopMultiplier: 1.0,
+        bullishOnly: false,
+        bearishOnly: false,
+        requireTrendAlignment: true,
+        requireDivergence: false,
+        requireVolume: false,
+        requireTrending: true
+    },
+    profit_hunter: {
+        name: '💎 PROFIT HUNTER',
+        minConfidenceThreshold: 52,
         riskPerTrade: 0.15,
-        takeProfitRatio: 1.2,
-        maxPositions: 7,
+        takeProfitRatio: 2.8,
+        maxPositions: 4,
         candleInterval: '4h',
-        stopMultiplier: 0.55,
+        stopMultiplier: 0.85,
         bullishOnly: false,
-        bearishOnly: true,
+        bearishOnly: false,
+        requireTrendAlignment: true,
         requireDivergence: false,
         requireVolume: false,
-        requireTrending: false
-    },
-    // 16% with 8 positions
-    mega_diversified: {
-        name: '🎯 MEGA 16% 8POS',
-        minConfidenceThreshold: 23,
-        riskPerTrade: 0.16,
-        takeProfitRatio: 1.2,
-        maxPositions: 8,
-        candleInterval: '4h',
-        stopMultiplier: 0.6,
-        bullishOnly: false,
-        bearishOnly: true,
-        requireDivergence: false,
-        requireVolume: false,
-        requireTrending: false
-    },
-    // 15% with wider stops
-    wide_diversified: {
-        name: '📏 WIDE 15%',
-        minConfidenceThreshold: 23,
-        riskPerTrade: 0.15,
-        takeProfitRatio: 1.2,
-        maxPositions: 7,
-        candleInterval: '4h',
-        stopMultiplier: 0.65,
-        bullishOnly: false,
-        bearishOnly: true,
-        requireDivergence: false,
-        requireVolume: false,
-        requireTrending: false
-    },
-    // Perfect balance attempt
-    optimal: {
-        name: '⚡ OPTIMAL',
-        minConfidenceThreshold: 23,
-        riskPerTrade: 0.155,
-        takeProfitRatio: 1.2,
-        maxPositions: 7,
-        candleInterval: '4h',
-        stopMultiplier: 0.58,
-        bullishOnly: false,
-        bearishOnly: true,
-        requireDivergence: false,
-        requireVolume: false,
-        requireTrending: false
+        requireTrending: true
     }
 };
 
@@ -204,6 +262,7 @@ async function runSwingBacktest(scenarioConfig) {
 
     const positionManager = new PositionManager(riskParams);
     dataLogger.resetData(positionManager.accountBalance);
+    tradeAnalyzer.reset();  // Reset analyzer for new backtest
 
     const tradingSymbols = config.tradingSymbols;
     const lastCandleTimeMap = {};
@@ -303,8 +362,13 @@ async function runSwingBacktest(scenarioConfig) {
                                 meetsThreshold: analysis.meetsThreshold
                             });
 
-                            // Check exits
-                            const exitSignals = positionManager.checkExitSignals(currentPrice, symbol);
+                            // Check exits with trailing stop support
+                            const trailingConfig = scenarioConfig.useTrailingStop ? {
+                                useTrailingStop: true,
+                                trailActivation: scenarioConfig.trailActivation || 0.5,
+                                trailDistance: scenarioConfig.trailDistance || 0.3
+                            } : null;
+                            const exitSignals = positionManager.checkExitSignals(currentPrice, symbol, trailingConfig);
                             exitSignals.forEach(exit => {
                                 const result = positionManager.closePosition(exit.tradeId, exit.exitPrice);
                                 if (result.success) {
@@ -318,7 +382,14 @@ async function runSwingBacktest(scenarioConfig) {
                                         stats.totalLoss += Math.abs(trade.profitLoss);
                                     }
 
-                                    dataLogger.closeTrade(
+                                    // Log to trade analyzer for failure analysis
+                                    tradeAnalyzer.logExit(exit.tradeId, {
+                                        exitTime: new Date(currentCandleTime),
+                                        exitPrice: exit.exitPrice,
+                                        reason: exit.reason,
+                                        profitLoss: trade.profitLoss,
+                                        profitLossPercent: trade.profitLossPercent
+                                    });                                    dataLogger.closeTrade(
                                         exit.tradeId,
                                         exit.exitPrice,
                                         exit.reason,
@@ -401,7 +472,7 @@ async function runSwingBacktest(scenarioConfig) {
                                     stopPrice = closedCandle[2] + stopLossDistance;
                                 }
                                 
-                                // Calculate Fibonacci targets from local swing high/low
+                                // Calculate Fibonacci targets
                                 const recentCandles = ohlcv.slice(Math.max(0, candleIndex - 20), candleIndex);
                                 const localHigh = Math.max(...recentCandles.map(c => c[2]));
                                 const localLow = Math.min(...recentCandles.map(c => c[3]));
@@ -412,10 +483,25 @@ async function runSwingBacktest(scenarioConfig) {
                                     analysis.finalSignal
                                 );
                                 
+                                // Use Fibonacci 61.8% target
+                                let targetPrice = fibTargets.target_618;
+                                
+                                // Calculate actual R:R ratio
+                                const stopDistance = Math.abs(entryPrice - stopPrice);
+                                const targetDistance = Math.abs(targetPrice - entryPrice);
+                                const actualRR = targetDistance / stopDistance;
+                                
+                                // Skip trades with very poor R:R (below 0.8:1)
+                                const minRRRatio = scenarioConfig.minRRRatio || 0.8;
+                                if (actualRR < minRRRatio) {
+                                    stats.skippedLowRR = (stats.skippedLowRR || 0) + 1;
+                                    continue;
+                                }
+                                
                                 if (stats.validSignals <= 3) {
                                     console.log(`   Entry: $${entryPrice.toFixed(2)} | Stop: $${stopPrice.toFixed(2)}`);
-                                    console.log(`   Stop Distance: $${Math.abs(entryPrice - stopPrice).toFixed(2)}`);
-                                    console.log(`   Fib Targets: 50%=$${fibTargets.target_50.toFixed(2)} | 61.8%=$${fibTargets.target_618.toFixed(2)} | 100%=$${fibTargets.target_100.toFixed(2)}`);
+                                    console.log(`   Stop Distance: $${stopDistance.toFixed(2)} (${((stopDistance/entryPrice)*100).toFixed(2)}%)`);
+                                    console.log(`   Target: $${targetPrice.toFixed(2)} (Fib 61.8%, R:R ${actualRR.toFixed(2)}:1)`);
                                 }
 
                                 const sizing = positionManager.calculatePositionSize(
@@ -426,15 +512,15 @@ async function runSwingBacktest(scenarioConfig) {
                                 );
 
                                 if (!sizing.error) {
-                                    // Override targetPrice with Fibonacci 61.8% level for swing trading
-                                    sizing.targetPrice = fibTargets.primary;
+                                    // Use calculated target with proper R:R ratio
+                                    sizing.targetPrice = targetPrice;
                                     
                                     const tradeResult = positionManager.openPosition({
                                         symbol: symbol,
                                         signal: analysis.finalSignal,
                                         entryPrice,
                                         stopPrice,
-                                        targetPrice: fibTargets.primary,  // Pass Fib target
+                                        targetPrice: targetPrice,  // Use calculated R:R target
                                         confidence: analysis.confidence,
                                         analysis: {
                                             pattern: null,
@@ -446,6 +532,29 @@ async function runSwingBacktest(scenarioConfig) {
 
                                     if (tradeResult.success) {
                                         stats.tradesOpened++;
+                                        
+                                        // Log to trade analyzer with full context
+                                        tradeAnalyzer.logEntry({
+                                            id: tradeResult.trade.id,
+                                            symbol: tradeResult.trade.symbol,
+                                            signal: tradeResult.trade.signal,
+                                            entryTime: new Date(currentCandleTime),
+                                            entryPrice: tradeResult.trade.entryPrice,
+                                            stopPrice: tradeResult.trade.stopPrice,
+                                            targetPrice: tradeResult.trade.targetPrice,
+                                            positionSize: tradeResult.trade.positionSize,
+                                            confidence: tradeResult.trade.confidence,
+                                            analysis: {
+                                                trend: analysis.signals.trend,
+                                                momentum: analysis.signals.momentum,
+                                                candlestick: analysis.signals.candlesticks,
+                                                fibonacci: analysis.signals.fibonacci,
+                                                harmonics: analysis.signals.harmonics,
+                                                volume: analysis.signals.filters?.volume,
+                                                marketRegime: analysis.signals.filters?.marketRegime,
+                                                signalQuality: analysis.signalQuality
+                                            }
+                                        });
                                         
                                         dataLogger.logTrade({
                                             id: tradeResult.trade.id,
@@ -481,6 +590,9 @@ async function runSwingBacktest(scenarioConfig) {
         console.log(`RESULTS:\n`);
         console.log(`📈 Signals:`);
         console.log(`   Total: ${stats.totalSignals} | Valid: ${stats.validSignals} (${((stats.validSignals/stats.totalSignals)*100).toFixed(1)}%)`);
+        if (stats.skippedLowRR) {
+            console.log(`   Skipped (low R:R): ${stats.skippedLowRR}`);
+        }
         console.log(`\n💼 Trades:`);
         console.log(`   Opened: ${stats.tradesOpened} | Closed: ${stats.tradesClosed}`);
         console.log(`   Winners: ${stats.winners} | Losers: ${stats.losers}`);
@@ -508,11 +620,20 @@ async function runSwingBacktest(scenarioConfig) {
         console.log(`   Max Possible Allocation: ${maxPossibleAllocation.toFixed(0)}% (${scenarioConfig.maxPositions} × ${(scenarioConfig.riskPerTrade * 100).toFixed(0)}%)`);
         console.log();
 
+        // Generate failure analysis report if there are losses
+        const showDetailedAnalysis = process.argv.includes('--analyze') || process.argv.includes('-a');
+        if (showDetailedAnalysis && stats.losers > 0) {
+            tradeAnalyzer.printFailureReport();
+            const logFile = tradeAnalyzer.saveToFile();
+            console.log(`\n📁 Detailed trade log saved to: ${logFile}\n`);
+        }
+
         return {
             scenario: scenarioConfig.name,
             winRate: stats.tradesClosed > 0 ? ((stats.winners / stats.tradesClosed) * 100).toFixed(2) : '0.00',
             totalReturn: returnPercent,
-            tradesOpened: stats.tradesOpened
+            tradesOpened: stats.tradesOpened,
+            failureReport: stats.losers > 0 ? tradeAnalyzer.generateReport() : null
         };
 
     } catch (error) {

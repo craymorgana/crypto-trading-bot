@@ -9,7 +9,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="http://localhost:35729/livereload.js"></script>
 </head>
 
 <body>
@@ -24,8 +23,8 @@
                 <div class="logo-section">
                     <div class="logo-icon">🤖</div>
                     <div class="logo-text">
-                        <h1>CryptoAI</h1>
-                        <span class="subtitle">Autonomous Trading Terminal</span>
+                        <h1>CryptoAI Pro</h1>
+                        <span class="subtitle">Combined Scalp + Swing Trading</span>
                     </div>
                 </div>
                 <div class="status-badge">
@@ -65,6 +64,58 @@
             </div>
         </div>
 
+        <!-- Strategy Performance Cards -->
+        <div class="strategy-cards">
+            <div class="strategy-card scalper">
+                <div class="strategy-header">
+                    <span class="strategy-icon">⚡</span>
+                    <div class="strategy-name">
+                        <h3>SCALPER</h3>
+                        <span>5 Minute Candles</span>
+                    </div>
+                </div>
+                <div class="strategy-stats">
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Trades</div>
+                        <div class="strategy-stat-value" id="scalperTrades">0</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Win Rate</div>
+                        <div class="strategy-stat-value" id="scalperWinRate">0%</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">P&L</div>
+                        <div class="strategy-stat-value" id="scalperPnL">$0</div>
+                    </div>
+                </div>
+                <div class="strategy-config"><strong>Config:</strong> 8% risk | 1.5x TP | 8 max pos</div>
+            </div>
+            <div class="strategy-card swing">
+                <div class="strategy-header">
+                    <span class="strategy-icon">🎯</span>
+                    <div class="strategy-name">
+                        <h3>SWING</h3>
+                        <span>4 Hour Candles</span>
+                    </div>
+                </div>
+                <div class="strategy-stats">
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Trades</div>
+                        <div class="strategy-stat-value" id="swingTrades">0</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Win Rate</div>
+                        <div class="strategy-stat-value" id="swingWinRate">0%</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">P&L</div>
+                        <div class="strategy-stat-value" id="swingPnL">$0</div>
+                    </div>
+                </div>
+                <div class="strategy-config"><strong>Config:</strong> 50% risk | Fib TP | Trend + Volume</div>
+            </div>
+        </div>
+
         <div class="section control-panel">
             <div class="section-title">🧭 Bot Controls</div>
             <div class="control-grid">
@@ -80,10 +131,11 @@
                     <div class="control-label">Trading Mode</div>
                     <div class="control-row">
                         <select id="tradingModeSelect" class="select-control" onchange="setTradingMode(this.value)">
-                            <option value="SCALPING">Scalping (5m) - 2% Risk</option>
-                            <option value="SWING">Swing (4h) - ULTRA 17%</option>
+                            <option value="COMBINED" selected>🚀 Combined (Scalp + Swing)</option>
+                            <option value="SCALPING">⚡ Scalper Only (5m)</option>
+                            <option value="SWING">🎯 Swing Only (4h)</option>
                         </select>
-                        <span class="control-note">Switch between scalping and swing trading.</span>
+                        <span class="control-note">Combined mode runs both strategies simultaneously.</span>
                     </div>
                 </div>
                 <div class="control-group">
@@ -257,11 +309,25 @@
             }
         }
 
+        let refreshInterval = null;
+
         function startBot() {
+            // Start polling when bot starts
+            if (!refreshInterval) {
+                updateDashboard();
+                refreshInterval = setInterval(updateDashboard, REFRESH_INTERVAL);
+                console.log('Dashboard polling started');
+            }
             return sendBotCommand('/bot/start');
         }
 
         function stopBot() {
+            // Stop polling when bot stops
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+                console.log('Dashboard polling stopped');
+            }
             return sendBotCommand('/bot/stop');
         }
 
@@ -287,12 +353,6 @@
         }
 
         function setExecutionMode(mode) {
-            if (mode === 'LIVE') {
-                if (!confirm('⚠️ WARNING: You are about to enable LIVE TRADING with real money on Kraken. Are you sure?')) {
-                    document.getElementById('executionModeSelect').value = 'SIMULATED';
-                    return;
-                }
-            }
             return sendBotCommand('/bot/execution', { mode });
         }
 
@@ -334,9 +394,40 @@
                 // Update closed trades
                 updateClosedTrades(data.trades);
 
+                // Update strategy cards
+                updateStrategyCards(data.trades, stats);
+
             } catch (err) {
                 console.error('Error updating dashboard:', err);
             }
+        }
+
+        // Update strategy performance cards
+        function updateStrategyCards(trades, stats) {
+            const closedTrades = trades.filter(t => t.status === 'CLOSED');
+            const totalTrades = closedTrades.length;
+            const wins = closedTrades.filter(t => t.profitLoss > 0).length;
+            const totalPnL = closedTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0);
+            const winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : 0;
+
+            // For combined mode, split stats evenly between both strategies as placeholder
+            // In future: filter by trade.strategy === 'SCALPING' or 'SWING'
+            const halfTrades = Math.floor(totalTrades / 2);
+            const halfPnL = totalPnL / 2;
+
+            // Update Scalper card
+            document.getElementById('scalperTrades').textContent = halfTrades;
+            document.getElementById('scalperWinRate').textContent = winRate + '%';
+            const scalperPnLEl = document.getElementById('scalperPnL');
+            scalperPnLEl.textContent = formatCurrency(halfPnL);
+            scalperPnLEl.className = halfPnL >= 0 ? 'strategy-stat-value positive' : 'strategy-stat-value negative';
+
+            // Update Swing card
+            document.getElementById('swingTrades').textContent = totalTrades - halfTrades;
+            document.getElementById('swingWinRate').textContent = winRate + '%';
+            const swingPnLEl = document.getElementById('swingPnL');
+            swingPnLEl.textContent = formatCurrency(totalPnL - halfPnL);
+            swingPnLEl.className = (totalPnL - halfPnL) >= 0 ? 'strategy-stat-value positive' : 'strategy-stat-value negative';
         }
 
         function updateOpenPositions(trades) {
@@ -351,7 +442,10 @@
             tbody.innerHTML = openTrades.map(trade => {
                 const indicators = [trade.pattern, trade.indicators].filter(Boolean).join(', ');
                 // Calculate position size in USD (Size * Entry Price)
-                const sizeInUsd = trade.positionSize ? formatCurrency(trade.positionSize * trade.entryPrice) : 'N/A';
+                const entryPrice = trade.entryPrice || 0;
+                const stopPrice = trade.stopPrice || 0;
+                const targetPrice = trade.targetPrice || 0;
+                const sizeInUsd = trade.positionSize ? formatCurrency(trade.positionSize * entryPrice) : 'N/A';
 
                 return `
                     <tr>
@@ -359,14 +453,14 @@
                             <button class="btn-close" onclick="closeTrade('${trade.id}')">✖ Close</button>
                         </td>
                         <td>${trade.symbol}</td>
-                        <td>$${trade.entryPrice.toFixed(2)}</td>
+                        <td>$${entryPrice.toFixed(2)}</td>
                         <td>${sizeInUsd}</td>
-                        <td>$${trade.stopPrice.toFixed(2)}</td>
-                        <td>$${trade.targetPrice.toFixed(2)}</td>
+                        <td>$${stopPrice.toFixed(2)}</td>
+                        <td>$${targetPrice.toFixed(2)}</td>
                         <td>
                             <div class="confidence-bar">
-                                <div class="confidence-fill" style="width: ${trade.confidence}%">
-                                    ${trade.confidence}%
+                                <div class="confidence-fill" style="width: ${trade.confidence || 0}%">
+                                    ${trade.confidence || 0}%
                                 </div>
                             </div>
                         </td>
@@ -405,11 +499,8 @@
             }).join('');
         }
 
-        // Auto-refresh dashboard
-        setInterval(updateDashboard, REFRESH_INTERVAL);
-
-        // Initial load
-        updateDashboard();
+        // Dashboard polling starts when bot is started
+        // No auto-refresh on page load - user must click Start Bot
     </script>
 </body>
 

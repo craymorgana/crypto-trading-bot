@@ -15,6 +15,7 @@ const { analyzeForSwinging, formatAnalysis } = require('../shared/unified-analys
 const PositionManager = require('../shared/risk-manager');
 const dataLogger = require('../shared/data-logger');
 const { getConfig } = require('../shared/strategy-configs');
+const { calculateVolatility } = require('../shared/indicators');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -48,7 +49,7 @@ const DEFAULT_PRODUCTION_CONFIG = {
 let PRODUCTION_CONFIG = DEFAULT_PRODUCTION_CONFIG;
 
 const botState = {
-    running: true,
+    running: false,  // Start STOPPED - wait for START_BOT command
     mode: 'SWING', // Can be SCALPING or SWING
     executionMode: 'SIMULATED', // Can be SIMULATED or LIVE
     tradesThisSession: 0,
@@ -136,8 +137,8 @@ async function initializeBot() {
     // Fetch actual account balance from Kraken
     console.log('💰 Fetching account balance from Kraken...');
     const balance = await exchange.fetchBalance();
-    const usdBalance = balance['USD']?.free || 0;
-    console.log(`   Kraken USD Balance: $${usdBalance.toFixed(2)}`);
+    const usdBalance = balance?.USD?.free ?? 0;
+    console.log(`   Kraken USD Balance: $${usdBalance?.toFixed(2) || '0.00'}`);
     
     if (usdBalance === 0) {
         console.log('   ⚠️  Zero balance detected');
@@ -195,12 +196,45 @@ async function runProductionBot() {
 
     let checkCounter = 0;
     const MODE_CHECK_INTERVAL = 30; // Check for mode changes every 30 iterations
+    const COMMAND_CHECK_INTERVAL = 5; // Check for commands more frequently
 
-    while (botState.running) {
+    console.log('⏸️  Bot initialized but STOPPED. Click "Start Bot" in dashboard to begin trading.\n');
+
+    // Main loop - always runs to check for commands
+    while (true) {
         checkCounter++;
         const timestamp = new Date().toLocaleTimeString();
 
         try {
+            // Always check for commands (START_BOT, STOP_BOT)
+            if (checkCounter % COMMAND_CHECK_INTERVAL === 0) {
+                const pendingCommands = dataLogger.getPendingCommands();
+                for (const cmd of pendingCommands) {
+                    if (cmd.type === 'START_BOT' && !botState.running) {
+                        botState.running = true;
+                        console.log(`[${timestamp}] ▶️  BOT STARTED`);
+                        dataLogger.markCommandProcessed(cmd.id, { success: true });
+                    } else if (cmd.type === 'STOP_BOT' && botState.running) {
+                        botState.running = false;
+                        console.log(`[${timestamp}] ⏸️  BOT STOPPED`);
+                        dataLogger.markCommandProcessed(cmd.id, { success: true });
+                    } else if (cmd.type === 'RESTART_BOT') {
+                        botState.running = true;
+                        console.log(`[${timestamp}] 🔄 BOT RESTARTED`);
+                        dataLogger.markCommandProcessed(cmd.id, { success: true });
+                    } else {
+                        // Mark other commands as processed to avoid buildup
+                        dataLogger.markCommandProcessed(cmd.id, { skipped: true });
+                    }
+                }
+            }
+
+            // If bot is stopped, just sleep and continue checking for commands
+            if (!botState.running) {
+                await sleep(1000);
+                continue;
+            }
+
             // Periodically check for mode changes from dashboard
             if (checkCounter % MODE_CHECK_INTERVAL === 0) {
                 const newMode = loadModeFromState();
@@ -218,6 +252,20 @@ async function runProductionBot() {
                     botState.executionMode = newExecutionMode;
                     const modeLabel = newExecutionMode === 'LIVE' ? '🔴 LIVE TRADING' : '📊 SIMULATED';
                     console.log(`[${timestamp}] ${modeLabel} mode activated`);
+                    
+                    // Fetch live balance when switching to LIVE mode
+                    if (newExecutionMode === 'LIVE') {
+                        try {
+                            const balance = await exchange.fetchBalance();
+                            const usdBalance = balance?.USD?.free ?? 0;
+                            console.log(`[${timestamp}] 💰 Live Kraken balance: $${usdBalance.toFixed(2)}`);
+                            positionManager.accountBalance = usdBalance;
+                            positionManager.availableBalance = usdBalance;
+                            dataLogger.updateStats({ currentBalance: usdBalance, availableBalance: usdBalance });
+                        } catch (err) {
+                            console.error(`[${timestamp}] ❌ Failed to fetch balance: ${err.message}`);
+                        }
+                    }
                 }
             }
             
@@ -255,13 +303,13 @@ async function runProductionBot() {
                             minConfidenceThreshold: PRODUCTION_CONFIG.minConfidenceThreshold
                         });
 
-                        // Apply bearish-only filter
-                        if (analysis.meetsThreshold && analysis.finalSignal === 'BEARISH') {
+                        // Only take BULLISH signals (long-only, no margin/shorting available)
+                        if (analysis.meetsThreshold && analysis.finalSignal === 'BULLISH') {
                             console.log(`[${timestamp}] 📈 SIGNAL DETECTED`);
                             console.log(`   Symbol: ${symbol}`);
                             console.log(`   Signal: ${analysis.finalSignal}`);
-                            console.log(`   Confidence: ${analysis.confidence.toFixed(0)}%`);
-                            console.log(`   Current Price: $${currentPrice.toFixed(2)}\n`);
+                            console.log(`   Confidence: ${(analysis.confidence || 0).toFixed(0)}%`);
+                            console.log(`   Current Price: $${(currentPrice || 0).toFixed(2)}\n`);
 
                             dataLogger.logSignal({
                                 symbol,
@@ -277,17 +325,23 @@ async function runProductionBot() {
                             // Attempt entry
                             const openPositions = positionManager.positions.length;
                             if (openPositions < PRODUCTION_CONFIG.maxPositions) {
-                                const entry = {
-                                    symbol,
-                                    entryPrice: currentPrice,
-                                    signal: analysis.finalSignal,
-                                    confidence: analysis.confidence,
-                                    timestamp: new Date()
-                                };
+                                // Calculate ATR for stop/target
+                                const atrData = calculateVolatility(ohlcv, 14);
+                                const atr = atrData.atr || (currentPrice * 0.01); // Fallback to 1% if ATR fails
+                                
+                                // Calculate stop and target based on ATR and config
+                                const stopMultiplier = PRODUCTION_CONFIG.stopMultiplier || 1.5;
+                                const takeProfitRatio = PRODUCTION_CONFIG.takeProfitRatio || 1.5;
+                                
+                                // BULLISH only: Stop below entry, target above
+                                const stopPrice = currentPrice - (atr * stopMultiplier);
+                                const targetPrice = currentPrice + (atr * stopMultiplier * takeProfitRatio);
 
                                 const tradeData = {
                                     symbol,
                                     entryPrice: currentPrice,
+                                    stopPrice,
+                                    targetPrice,
                                     signal: analysis.finalSignal,
                                     confidence: analysis.confidence,
                                     swingHigh: null,
@@ -298,12 +352,16 @@ async function runProductionBot() {
                                 const result = positionManager.openPosition(tradeData);
                                 
                                 if (result.success) {
+                                    // ALWAYS re-check execution mode before any trade
+                                    const currentExecutionMode = loadExecutionModeFromState();
+                                    botState.executionMode = currentExecutionMode;
+                                    
                                     // If LIVE mode, execute real trade on Kraken
-                                    if (botState.executionMode === 'LIVE') {
+                                    if (currentExecutionMode === 'LIVE') {
                                         try {
                                             const tradeResponse = await axios.post(`${DASHBOARD_API}/execute-trade`, {
                                                 symbol,
-                                                side: analysis.finalSignal.toLowerCase() === 'bearish' ? 'sell' : 'buy',
+                                                side: 'buy',  // Long-only: always buying
                                                 quantity: result.trade.positionSize,
                                                 entryPrice: result.trade.entryPrice,
                                                 stopPrice: result.trade.stopPrice,
@@ -312,9 +370,20 @@ async function runProductionBot() {
                                             
                                             if (tradeResponse.data.success) {
                                                 console.log(`[${timestamp}] 🔴 LIVE TRADE EXECUTED`);
-                                                console.log(`   Entry Order ID: ${tradeResponse.data.order.id}`);
-                                                console.log(`   Stop-Loss: $${tradeResponse.data.closeOrder?.triggerPrice.toFixed(2)}`);
-                                                console.log(`   Take-Profit: ${tradeResponse.data.takeProfit ? '$' + tradeResponse.data.takeProfit.price.toFixed(2) : 'N/A'}\n`);
+                                                console.log(`   Entry Order ID: ${tradeResponse.data.order?.id || 'N/A'}`);
+                                                const condClose = tradeResponse.data.order?.conditionalClose;
+                                                if (condClose) {
+                                                    console.log(`   🛑 Stop-Loss (conditional close): trigger=$${condClose.triggerPrice.toFixed(2)}, limit=$${condClose.limitPrice.toFixed(2)}`);
+                                                } else {
+                                                    console.log(`   ⚠️  No conditional stop-loss attached`);
+                                                }
+                                                const tp = tradeResponse.data.takeProfit;
+                                                if (tp) {
+                                                    console.log(`   🎯 Take-Profit: trigger=$${tp.triggerPrice.toFixed(2)}, limit=$${tp.limitPrice.toFixed(2)} (ID: ${tp.id})`);
+                                                } else {
+                                                    console.log(`   ⚠️  No take-profit order placed`);
+                                                }
+                                                console.log('');
                                             } else {
                                                 throw new Error(tradeResponse.data.error || 'Unknown error');
                                             }
@@ -327,11 +396,11 @@ async function runProductionBot() {
                                         }
                                     } else {
                                         // SIMULATED mode - just log
-                                        console.log(`[${timestamp}] 📊 TRADE OPENED (SIMULATED)`);
-                                        console.log(`   Entry: $${result.trade.entryPrice.toFixed(2)}`);
-                                        console.log(`   Stop: $${result.trade.stopPrice.toFixed(2)}`);
-                                        console.log(`   Target: $${result.trade.targetPrice.toFixed(2)}`);
-                                        console.log(`   Position Size: ${result.trade.positionSize.toFixed(4)}\n`);
+                                        console.log(`[${timestamp}] 📊 TRADE OPENED (SIMULATED) - BUY`);
+                                        console.log(`   Entry: $${(result.trade.entryPrice || 0).toFixed(2)}`);
+                                        console.log(`   Stop: $${(result.trade.stopPrice || 0).toFixed(2)}`);
+                                        console.log(`   Target: $${(result.trade.targetPrice || 0).toFixed(2)}`);
+                                        console.log(`   Position Size: ${(result.trade.positionSize || 0).toFixed(4)}\n`);
                                     }
 
                                     dataLogger.logTrade({
@@ -358,8 +427,8 @@ async function runProductionBot() {
                         if (exitTrade.symbol === symbol) {
                             console.log(`[${timestamp}] 🎯 POSITION CLOSED`);
                             console.log(`   Symbol: ${symbol}`);
-                            console.log(`   Exit Price: $${currentPrice.toFixed(2)}`);
-                            console.log(`   P&L: $${exitTrade.profit.toFixed(2)} (${(exitTrade.profitPercent * 100).toFixed(2)}%)\n`);
+                            console.log(`   Exit Price: $${(currentPrice || 0).toFixed(2)}`);
+                            console.log(`   P&L: $${(exitTrade.profit || 0).toFixed(2)} (${((exitTrade.profitPercent || 0) * 100).toFixed(2)}%)\n`);
 
                             dataLogger.closeTrade(exitTrade.tradeId, currentPrice);
                         }
@@ -375,8 +444,8 @@ async function runProductionBot() {
                 console.log(`[${timestamp}] 📊 SESSION STATS`);
                 console.log(`   Trades Opened: ${botState.tradesThisSession}`);
                 console.log(`   Open Positions: ${positionManager.positions.length}/${PRODUCTION_CONFIG.maxPositions}`);
-                console.log(`   Balance: $${positionManager.accountBalance.toFixed(2)}`);
-                console.log(`   Win Rate: ${stats.winRate.toFixed(1)}%\n`);
+                console.log(`   Balance: $${(positionManager.accountBalance || 0).toFixed(2)}`);
+                console.log(`   Win Rate: ${stats.winRate || '0%'}\n`);
             }
 
             await sleep(300000); // Check every 5 minutes
