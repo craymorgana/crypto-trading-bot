@@ -1,5 +1,5 @@
 # 🤖 CryptoAI Trading Bot
-
+![HomeScreen](Screenshot.png)
 **Autonomous cryptocurrency trading bot with real-time signals and live Kraken integration.**
 
 > **Note:** This bot includes a full SIMULATED mode for testing strategies risk-free before trading with real money.
