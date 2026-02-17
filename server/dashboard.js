@@ -8,7 +8,12 @@ const fs = require('fs');
 const dataLogger = require('./shared/data-logger');
 const net = require('net');
 const ccxt = require('ccxt');
+const config = require('./shared/config');
+const { analyzeForScalping } = require('./shared/unified-analysis');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+// Base coins from trading symbols (e.g. BTC/USD -> BTC)
+const TRADING_BASES = config.tradingSymbols.map(s => s.split('/')[0]);
 
 const app = express();
 let PORT = parseInt(process.env.DASHBOARD_PORT || 3000, 10);
@@ -39,6 +44,102 @@ function registerCloseTradeHandler(handler) {
 
 function registerExchange(exchangeInstance) {
     exchange = exchangeInstance;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withKrakenRetry(action, label, maxAttempts = 3) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await action();
+        } catch (err) {
+            lastError = err;
+            const message = err?.message || '';
+            const shouldRetry =
+                message.includes('Invalid nonce') ||
+                message.includes('EAPI:Invalid nonce') ||
+                message.includes('EGeneral:Rate limit exceeded') ||
+                message.includes('Rate limit') ||
+                message.includes('Too many requests');
+            if (!shouldRetry || attempt === maxAttempts) {
+                throw err;
+            }
+            console.warn(`   ⚠️  ${label} retry ${attempt}/${maxAttempts}: ${message}`);
+            await sleep(1000 * attempt);
+        }
+    }
+    throw lastError;
+}
+
+async function fetchBalanceWithRetry(maxAttempts = 3) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await exchange.fetchBalance();
+        } catch (err) {
+            lastError = err;
+            const message = err?.message || '';
+            const isInvalidNonce = message.includes('Invalid nonce') || message.includes('EAPI:Invalid nonce');
+            if (!isInvalidNonce || attempt === maxAttempts) {
+                throw err;
+            }
+            await sleep(1000 * attempt);
+        }
+    }
+    throw lastError;
+}
+
+async function getAvailableForTp(market, tpSide, tpTriggerPrice) {
+    const balance = await fetchBalanceWithRetry();
+    const base = market.base;
+    const quote = market.quote;
+
+    if (tpSide === 'sell') {
+        const freeBase = balance.free?.[base] ?? balance[base]?.free ?? 0;
+        return { availableQty: freeBase, balance }; // qty in base
+    }
+
+    const freeQuote = balance.free?.[quote] ?? balance[quote]?.free ?? 0;
+    const qtyFromQuote = tpTriggerPrice > 0 ? freeQuote / tpTriggerPrice : 0;
+    return { availableQty: qtyFromQuote, balance }; // qty in base
+}
+
+async function resolveTpQuantity({ market, tpSide, tpTriggerPrice, fallbackQty, orderId }) {
+    let filledQty = fallbackQty || 0;
+
+    for (let i = 0; i < 3; i++) {
+        try {
+            const order = await withKrakenRetry(
+                () => exchange.fetchOrder(orderId, market.symbol),
+                'fetchOrder'
+            );
+            if (order?.filled) {
+                filledQty = order.filled;
+                break;
+            }
+        } catch (err) {
+            console.warn(`   ⚠️  Fetch order attempt ${i + 1} failed: ${err.message}`);
+        }
+        await sleep(1500);
+    }
+
+    for (let i = 0; i < 5; i++) {
+        try {
+            const { availableQty } = await getAvailableForTp(market, tpSide, tpTriggerPrice);
+            const desiredQty = filledQty > 0 ? Math.min(filledQty, availableQty) : availableQty;
+            if (desiredQty > 0) {
+                return desiredQty;
+            }
+        } catch (err) {
+            console.warn(`   ⚠️  Balance check attempt ${i + 1} failed: ${err.message}`);
+        }
+        await sleep(1500);
+    }
+
+    return 0;
 }
 
 // Function to find an available port
@@ -205,12 +306,15 @@ app.post('/api/execute-trade', async (req, res) => {
         // Place market order WITH conditional close (stop-loss attached atomically)
         let order;
         try {
-            order = await exchange.createMarketOrder(
+            order = await withKrakenRetry(
+                () => exchange.createMarketOrder(
                 symbol,
                 side,
                 preciseQty,
                 undefined,  // price (not used for market orders)
                 orderParams // includes close.ordertype, close.price, close.price2
+                ),
+                'createMarketOrder'
             );
             console.log(`   ✅ Market order executed. ID: ${order.id}`);
             console.log(`   📊 Fill: ${order.filled} @ $${order.average?.toFixed(2) || 'pending'}`);
@@ -227,32 +331,57 @@ app.post('/api/execute-trade', async (req, res) => {
 
         // Place take-profit as a SEPARATE order (Kraken only allows 1 conditional close per order)
         // This fires independently once the entry fills
+        // Retry up to 3 times with backoff for transient errors (invalid nonce, etc.)
         let tpOrder = null;
         if (preciseTP) {
-            try {
-                const tpSide = side === 'buy' ? 'sell' : 'buy';
-                // Use take-profit-limit for controlled exit at target
-                // Limit price set 0.3% beyond trigger to ensure fill
-                const tpLimitRaw = side === 'buy'
-                    ? preciseTP * 0.997  // Selling to close long: limit slightly below TP trigger
-                    : preciseTP * 1.003; // Buying to close short: limit slightly above TP trigger
-                const preciseTpLimit = parseFloat(exchange.priceToPrecision(symbol, tpLimitRaw));
-                const tpQty = parseFloat(exchange.amountToPrecision(symbol, order.filled || preciseQty));
+            const tpSide = side === 'buy' ? 'sell' : 'buy';
+            const tpLimitRaw = side === 'buy'
+                ? preciseTP * 0.997
+                : preciseTP * 1.003;
+            const preciseTpLimit = parseFloat(exchange.priceToPrecision(symbol, tpLimitRaw));
 
-                // ccxt createOrder 5th arg = Kraken 'price' field = trigger price
-                // params.price2 = Kraken 'price2' field = limit price
-                tpOrder = await exchange.createOrder(
-                    symbol,
-                    'take-profit-limit',
-                    tpSide,
-                    tpQty,
-                    preciseTP,            // trigger price (Kraken 'price')
-                    { price2: preciseTpLimit }  // limit price (Kraken 'price2')
-                );
-                console.log(`   🎯 Take-profit-limit order placed: trigger=$${preciseTP}, limit=$${preciseTpLimit} (ID: ${tpOrder.id})`);
-            } catch (err) {
-                console.warn(`   ⚠️  Take-profit order failed: ${err.message}`);
-                console.warn(`   ⚠️  Position is still protected by conditional stop-loss`);
+            for (let tpAttempt = 1; tpAttempt <= 3; tpAttempt++) {
+                try {
+                    const rawQty = await resolveTpQuantity({
+                        market,
+                        tpSide,
+                        tpTriggerPrice: preciseTP,
+                        fallbackQty: order.filled || preciseQty,
+                        orderId: order.id
+                    });
+
+                    const tpQty = parseFloat(exchange.amountToPrecision(symbol, rawQty));
+                    const tpMinAmount = market.limits?.amount?.min || 0;
+
+                    if (!tpQty || tpQty <= 0) {
+                        console.warn('   ⚠️  Take-profit skipped: no available balance for TP size');
+                        break;
+                    } else if (tpQty < tpMinAmount) {
+                        console.warn(`   ⚠️  Take-profit skipped: qty ${tpQty} below minimum ${tpMinAmount} for ${symbol}`);
+                        break;
+                    }
+
+                    tpOrder = await withKrakenRetry(
+                        () => exchange.createOrder(
+                        symbol,
+                        'take-profit-limit',
+                        tpSide,
+                        tpQty,
+                        preciseTP,
+                        { price2: preciseTpLimit }
+                        ),
+                        'createOrder'
+                    );
+                    console.log(`   🎯 Take-profit-limit order placed: trigger=$${preciseTP}, limit=$${preciseTpLimit} (ID: ${tpOrder.id})`);
+                    break; // Success — stop retrying
+                } catch (err) {
+                    console.warn(`   ⚠️  Take-profit attempt ${tpAttempt}/3 failed: ${err.message}`);
+                    if (tpAttempt < 3) {
+                        await sleep(2000 * tpAttempt); // Backoff: 2s, 4s
+                    } else {
+                        console.warn('   ⚠️  Take-profit failed after 3 attempts. Position protected by stop-loss only.');
+                    }
+                }
             }
         }
 
@@ -377,7 +506,7 @@ app.post('/api/cancel-all-trades', async (req, res) => {
 
         try {
             // Cancel all open orders on Kraken
-            await exchange.cancelAllOrders();
+            await withKrakenRetry(() => exchange.cancelAllOrders(), 'cancelAllOrders');
             console.log('   ✅ All orders cancelled on Kraken');
         } catch (err) {
             console.error(`   ⚠️  Error canceling orders: ${err.message}`);
@@ -398,6 +527,133 @@ app.post('/api/cancel-all-trades', async (req, res) => {
     }
 });
 
+// Get all coin balances for trading pairs from Kraken
+app.get('/api/coin-balances', async (req, res) => {
+    try {
+        if (!exchange) {
+            return res.status(503).json({ error: 'Exchange not connected' });
+        }
+
+        await exchange.loadMarkets();
+        const balance = await fetchBalanceWithRetry();
+
+        // Build holdings for each trading-pair base coin + USD
+        const holdings = [];
+        let totalValueUsd = 0;
+
+        // USD balance
+        const usdFree = balance.free?.['USD'] ?? balance['USD']?.free ?? 0;
+        const usdTotal = balance.total?.['USD'] ?? balance['USD']?.total ?? 0;
+        if (usdTotal > 0.01) {
+            holdings.push({ coin: 'USD', free: usdFree, total: usdTotal, valueUsd: usdTotal, price: 1, trend: null });
+            totalValueUsd += usdTotal;
+        }
+
+        // Fetch tickers in parallel for all trading symbols
+        const tickerPromises = config.tradingSymbols.map(async (sym) => {
+            try {
+                const ticker = await exchange.fetchTicker(sym);
+                return { symbol: sym, price: ticker.last };
+            } catch { return { symbol: sym, price: null }; }
+        });
+        const tickers = await Promise.all(tickerPromises);
+        const priceMap = {};
+        tickers.forEach(t => { priceMap[t.symbol] = t.price; });
+
+        // Check each base coin
+        for (const sym of config.tradingSymbols) {
+            const base = sym.split('/')[0];
+            const free = balance.free?.[base] ?? balance[base]?.free ?? 0;
+            const total = balance.total?.[base] ?? balance[base]?.total ?? 0;
+            const price = priceMap[sym];
+
+            if (total > 0 && price) {
+                const valueUsd = total * price;
+                if (valueUsd < 0.01) continue; // skip dust
+
+                // Quick trend check (fetch latest candles and run analysis)
+                let trend = null;
+                try {
+                    const ohlcv = await exchange.fetchOHLCV(sym, '5m', undefined, 100);
+                    if (ohlcv && ohlcv.length > 30) {
+                        const analysis = analyzeForScalping(ohlcv.slice(0, -1), { minConfidenceThreshold: 45 });
+                        trend = {
+                            signal: analysis.finalSignal,
+                            confidence: analysis.confidence,
+                            meetsThreshold: analysis.meetsThreshold
+                        };
+                    }
+                } catch (err) {
+                    console.warn(`   ⚠️  Trend check failed for ${sym}: ${err.message}`);
+                }
+
+                holdings.push({ coin: base, symbol: sym, free, total, price, valueUsd, trend });
+                totalValueUsd += valueUsd;
+            }
+        }
+
+        res.json({ success: true, holdings, totalValueUsd });
+    } catch (err) {
+        console.error('Coin balances error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Sell a specific coin holding at market
+app.post('/api/sell-coin', async (req, res) => {
+    try {
+        if (!exchange) {
+            return res.status(503).json({ error: 'Exchange not connected' });
+        }
+
+        const { symbol } = req.body;
+        if (!symbol) {
+            return res.status(400).json({ error: 'Symbol is required (e.g. BTC/USD)' });
+        }
+
+        await exchange.loadMarkets();
+        const market = exchange.market(symbol);
+        const base = market.base;
+
+        // Get available balance for the coin
+        const balance = await fetchBalanceWithRetry();
+        const freeAmount = balance.free?.[base] ?? balance[base]?.free ?? 0;
+
+        if (freeAmount <= 0) {
+            return res.status(400).json({ error: `No free ${base} balance to sell` });
+        }
+
+        const minAmount = market.limits?.amount?.min || 0;
+        if (freeAmount < minAmount) {
+            return res.status(400).json({ error: `${base} balance ${freeAmount} below minimum order size ${minAmount}` });
+        }
+
+        const preciseQty = parseFloat(exchange.amountToPrecision(symbol, freeAmount));
+        console.log(`\n💰 SELLING ${preciseQty} ${base} at market (${symbol})`);
+
+        const order = await withKrakenRetry(
+            () => exchange.createMarketOrder(symbol, 'sell', preciseQty),
+            'createMarketOrder'
+        );
+        console.log(`   ✅ Sold ${order.filled || preciseQty} ${base} @ $${order.average?.toFixed(2) || 'pending'}`);
+
+        res.json({
+            success: true,
+            order: {
+                id: order.id,
+                symbol: order.symbol,
+                side: 'sell',
+                filled: order.filled,
+                average: order.average,
+                status: order.status
+            }
+        });
+    } catch (err) {
+        console.error('Sell coin error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get wallet balance from Kraken
 app.get('/api/wallet-balance', async (req, res) => {
     try {
@@ -405,7 +661,7 @@ app.get('/api/wallet-balance', async (req, res) => {
             return res.status(503).json({ error: 'Exchange not connected' });
         }
 
-        const balance = await exchange.fetchBalance();
+        const balance = await fetchBalanceWithRetry();
         const usdBalance = balance?.USD?.free ?? 0;
         const totalUsd = balance?.USD?.total ?? 0;
 
@@ -450,7 +706,7 @@ app.post('/api/bot/execution', async (req, res) => {
         // Fetch wallet balance when switching to LIVE mode
         if (normalized === 'LIVE' && exchange) {
             try {
-                const walletBalance = await exchange.fetchBalance();
+                const walletBalance = await fetchBalanceWithRetry();
                 const usdBalance = walletBalance?.USD?.free ?? 0;
                 balance = usdBalance;
                 message += ` | Wallet Balance: $${usdBalance.toFixed(2)}`;

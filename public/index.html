@@ -64,6 +64,14 @@
             </div>
         </div>
 
+        <!-- Coin Holdings from Kraken (only visible in live mode) -->
+        <div class="section coin-holdings-section" id="coinHoldingsSection" style="display:none;">
+            <div class="section-title">💰 Kraken Coin Holdings <span class="holdings-total" id="holdingsTotalValue">Total: --</span></div>
+            <div class="coin-holdings-row" id="coinHoldingsGrid">
+                <div class="no-data">Loading balances...</div>
+            </div>
+        </div>
+
         <!-- Strategy Performance Cards -->
         <div class="strategy-cards">
             <div class="strategy-card scalper">
@@ -353,6 +361,11 @@
         }
 
         function setExecutionMode(mode) {
+            if (mode === 'LIVE') {
+                startCoinBalancePolling();
+            } else {
+                stopCoinBalancePolling();
+            }
             return sendBotCommand('/bot/execution', { mode });
         }
 
@@ -501,6 +514,83 @@
 
         // Dashboard polling starts when bot is started
         // No auto-refresh on page load - user must click Start Bot
+
+        // Coin Holdings
+        async function fetchCoinBalances() {
+            try {
+                const response = await fetch(`${API_BASE}/coin-balances`);
+                const data = await response.json();
+                if (!data.success) return;
+
+                const grid = document.getElementById('coinHoldingsGrid');
+                const totalEl = document.getElementById('holdingsTotalValue');
+                totalEl.textContent = `Total: ${formatCurrency(data.totalValueUsd)}`;
+
+                if (!data.holdings || data.holdings.length === 0) {
+                    grid.innerHTML = '<div class="no-data">No coin balances found</div>';
+                    return;
+                }
+
+                grid.innerHTML = data.holdings.map(h => {
+                    const trendClass = !h.trend ? '' : h.trend.signal === 'BULLISH' ? 'trend-bull' : h.trend.signal === 'BEARISH' ? 'trend-bear' : '';
+                    const trendLabel = !h.trend ? '--' : `${h.trend.signal} ${h.trend.confidence}%`;
+                    const showSell = h.coin !== 'USD' && h.free > 0;
+                    return `
+                        <div class="coin-card">
+                            <div class="coin-name">${h.coin}</div>
+                            <div class="coin-amount">${h.coin === 'USD' ? '' : h.total.toFixed(6)}</div>
+                            <div class="coin-value">${formatCurrency(h.valueUsd)}</div>
+                            <div class="coin-price">${h.coin === 'USD' ? '' : '@ $' + h.price.toFixed(h.price < 1 ? 6 : 2)}</div>
+                            <div class="coin-trend ${trendClass}">${trendLabel}</div>
+                            ${showSell ? `<button class="btn-sell" onclick="sellCoin('${h.symbol}', '${h.coin}')">Sell All</button>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error('Error fetching coin balances:', err);
+            }
+        }
+
+        async function sellCoin(symbol, coin) {
+            if (!confirm(`Sell ALL ${coin} at market price?`)) return;
+            try {
+                setControlStatus(`Selling ${coin}...`);
+                const response = await fetch(`${API_BASE}/sell-coin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    setControlStatus(`✅ Sold ${coin} @ $${result.order.average?.toFixed(2) || 'pending'}`);
+                    fetchCoinBalances();
+                } else {
+                    setControlStatus(`❌ ${result.error}`, true);
+                }
+            } catch (err) {
+                setControlStatus('Sell failed. Check console.', true);
+                console.error('Sell error:', err);
+            }
+        }
+
+        // Coin balance polling (only when live mode active)
+        let coinBalanceInterval = null;
+        function startCoinBalancePolling() {
+            const section = document.getElementById('coinHoldingsSection');
+            section.style.display = '';
+            fetchCoinBalances();
+            if (!coinBalanceInterval) {
+                coinBalanceInterval = setInterval(fetchCoinBalances, 30000);
+            }
+        }
+        function stopCoinBalancePolling() {
+            const section = document.getElementById('coinHoldingsSection');
+            section.style.display = 'none';
+            if (coinBalanceInterval) {
+                clearInterval(coinBalanceInterval);
+                coinBalanceInterval = null;
+            }
+        }
     </script>
 </body>
 

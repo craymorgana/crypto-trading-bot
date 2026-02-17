@@ -105,7 +105,8 @@ function logTrade(tradeData) {
             exitPrice: null,
             profitLoss: null,
             profitLossPercent: null,
-            reason: null
+            reason: null,
+            krakenOrderIds: tradeData.krakenOrderIds || null
         });
 
         // Deduct investment amount from current balance
@@ -119,6 +120,22 @@ function logTrade(tradeData) {
         fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
     } catch (err) {
         console.error('Error logging trade:', err.message);
+    }
+}
+
+/**
+ * Update Kraken order IDs on an existing trade
+ */
+function updateTradeOrders(tradeId, krakenOrderIds) {
+    try {
+        const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        const trade = data.trades.find(t => t.id === tradeId);
+        if (trade) {
+            trade.krakenOrderIds = { ...(trade.krakenOrderIds || {}), ...krakenOrderIds };
+        }
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error('Error updating trade orders:', err.message);
     }
 }
 
@@ -301,5 +318,6 @@ module.exports = {
     resetData,
     logCommand,
     getPendingCommands,
-    markCommandProcessed
+    markCommandProcessed,
+    updateTradeOrders
 };

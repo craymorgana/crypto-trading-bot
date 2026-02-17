@@ -1,71 +1,19 @@
 {
-  "startTime": "2026-02-11T02:48:52.431Z",
-  "trades": [
-    {
-      "symbol": "ADA/USD",
-      "signal": "BULLISH",
-      "entryPrice": 0.263149,
-      "stopPrice": 0.2625276812493351,
-      "targetPrice": 0.26408097812599735,
-      "confidence": 50,
-      "positionSize": 507.64037104454127,
-      "status": "OPEN",
-      "exitTime": null,
-      "exitPrice": null,
-      "profitLoss": null,
-      "profitLossPercent": null,
-      "reason": null
-    }
-  ],
-  "signals": [
-    {
-      "timestamp": "2026-02-11T02:49:12.314Z",
-      "symbol": "ADA/USD",
-      "signal": "BULLISH",
-      "confidence": 50,
-      "pattern": null,
-      "fibonacci": false,
-      "harmonics": false,
-      "meetsThreshold": true
-    }
-  ],
+  "startTime": "2026-02-17T00:34:45.211Z",
+  "trades": [],
+  "signals": [],
   "stats": {
     "totalTrades": 0,
     "totalWins": 0,
     "totalLosses": 0,
     "winRate": 0,
     "totalProfitLoss": 0,
-    "currentBalance": 1536.2281440000002,
-    "initialBalance": 1669.8132,
+    "currentBalance": 1891.2925,
+    "initialBalance": 1891.2925,
     "totalReturn": 0,
-    "openPositions": 1,
+    "openPositions": 0,
     "maxDrawdown": 0,
     "consecutiveWins": 0,
-    "consecutiveLosses": 0,
-    "availableBalance": 1669.8132,
-    "lastUpdate": "2026-02-11T02:48:58.716Z"
-  },
-  "commands": [
-    {
-      "id": "cmd_1770778136041",
-      "timestamp": "2026-02-11T02:48:56.041Z",
-      "type": "SET_EXECUTION_MODE",
-      "mode": "LIVE",
-      "status": "PROCESSED",
-      "processedAt": "2026-02-11T02:48:56.545Z",
-      "result": {
-        "skipped": true
-      }
-    },
-    {
-      "id": "cmd_1770778139022",
-      "timestamp": "2026-02-11T02:48:59.022Z",
-      "type": "START_BOT",
-      "status": "PROCESSED",
-      "processedAt": "2026-02-11T02:49:01.599Z",
-      "result": {
-        "success": true
-      }
-    }
-  ]
+    "consecutiveLosses": 0
+  }
 }

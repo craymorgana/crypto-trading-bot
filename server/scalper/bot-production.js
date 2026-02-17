@@ -55,7 +55,8 @@ const botState = {
     tradesThisSession: 0,
     sessionStartTime: new Date(),
     lastCandleTimeMap: {},
-    lastModeCheck: 0
+    lastModeCheck: 0,
+    lastReconcileTime: 0
 };
 
 /**
@@ -172,9 +173,260 @@ async function initializeBot() {
         botState.lastCandleTimeMap[symbol] = null;
     });
 
+    // Sync with existing Kraken open orders so we don't double-up
+    try {
+        console.log('🔄 Syncing with existing Kraken open orders...');
+        const openOrders = await exchange.fetchOpenOrders();
+        
+        // Track which symbols already have conditional close (stop-loss) orders
+        // These indicate an active position that the bot previously opened
+        const symbolsWithOrders = new Set();
+        for (const order of openOrders) {
+            if (order.symbol && PRODUCTION_CONFIG.tradingSymbols.includes(order.symbol)) {
+                symbolsWithOrders.add(order.symbol);
+            }
+        }
+        
+        // Mark those symbols as having positions so we don't re-enter
+        for (const sym of symbolsWithOrders) {
+            try {
+                const ticker = await exchange.fetchTicker(sym);
+                const currentPrice = ticker.last;
+                
+                // Create a placeholder position so the manager won't open a new one
+                positionManager.positions.push({
+                    id: `synced_${sym}_${Date.now()}`,
+                    symbol: sym,
+                    signal: 'BULLISH',
+                    entryPrice: currentPrice,
+                    stopPrice: currentPrice * 0.99,
+                    targetPrice: currentPrice * 1.01,
+                    positionSize: 0,
+                    riskAmount: 0,
+                    confidence: 0,
+                    timestamp: new Date(),
+                    analysis: {},
+                    status: 'OPEN',
+                    synced: true  // Flag so we know this is a synced placeholder
+                });
+                console.log(`   📌 Synced existing position: ${sym} (has open orders on Kraken)`);
+            } catch (err) {
+                console.warn(`   ⚠️  Could not sync ${sym}: ${err.message}`);
+            }
+        }
+        
+        console.log(`   ✅ Found ${symbolsWithOrders.size} existing positions on Kraken`);
+        console.log(`   📊 Position tracker: ${positionManager.positions.length}/${PRODUCTION_CONFIG.maxPositions}\n`);
+    } catch (err) {
+        console.warn('⚠️  Could not sync Kraken orders:', err.message);
+    }
+
     console.log('✅ Bot initialized. Connecting to Kraken...\n');
 
     return { exchange, positionManager };
+}
+
+/**
+ * Reconcile bot positions with actual Kraken order state.
+ * - Detects filled SL or TP orders
+ * - Cancels orphaned counterpart orders
+ * - Closes the position in data-logger so dashboard shows it
+ * - Re-places missing TP orders if needed
+ */
+async function reconcileKrakenOrders(exchange, positionManager) {
+    const timestamp = new Date().toLocaleTimeString();
+
+    if (botState.executionMode !== 'LIVE') return;
+
+    try {
+        // Fetch all open orders and recent closed orders from Kraken
+        const openOrders = await exchange.fetchOpenOrders();
+        
+        // Build a map of open order IDs for quick lookup
+        const openOrderIds = new Set(openOrders.map(o => o.id));
+
+        // Fetch recent closed orders (last 50)
+        let closedOrders = [];
+        try {
+            closedOrders = await exchange.fetchClosedOrders(undefined, undefined, 50);
+        } catch (err) {
+            console.warn(`[${timestamp}] ⚠️  Could not fetch closed orders: ${err.message}`);
+        }
+        const closedOrderMap = {};
+        closedOrders.forEach(o => { closedOrderMap[o.id] = o; });
+
+        // Check each tracked position
+        const positionsToRemove = [];
+        
+        for (const pos of positionManager.positions) {
+            if (!pos.krakenOrderIds) continue; // No order IDs tracked (synced placeholder)
+
+            const { entryOrderId, stopOrderId, tpOrderId } = pos.krakenOrderIds;
+            
+            // Check if TP was filled
+            let tpFilled = false;
+            let tpFillPrice = null;
+            if (tpOrderId) {
+                if (!openOrderIds.has(tpOrderId)) {
+                    // TP no longer open — check if it was filled
+                    const closedTp = closedOrderMap[tpOrderId];
+                    if (closedTp && (closedTp.status === 'closed' || closedTp.filled > 0)) {
+                        tpFilled = true;
+                        tpFillPrice = closedTp.average || closedTp.price || pos.targetPrice;
+                    }
+                }
+            }
+
+            // Check if SL was filled (conditional close becomes a closed order)
+            let slFilled = false;
+            let slFillPrice = null;
+            if (stopOrderId) {
+                if (!openOrderIds.has(stopOrderId)) {
+                    const closedSl = closedOrderMap[stopOrderId];
+                    if (closedSl && (closedSl.status === 'closed' || closedSl.filled > 0)) {
+                        slFilled = true;
+                        slFillPrice = closedSl.average || closedSl.price || pos.stopPrice;
+                    }
+                }
+            }
+
+            // Also check: if we have NO open orders for this symbol at all,
+            // and the position has been open a while, the SL conditional close may have triggered
+            if (!tpFilled && !slFilled && !stopOrderId) {
+                const symbolOrders = openOrders.filter(o => o.symbol === pos.symbol);
+                if (symbolOrders.length === 0 && pos.entryPrice) {
+                    // No orders left — position was likely closed by conditional close
+                    try {
+                        const ticker = await exchange.fetchTicker(pos.symbol);
+                        const currentPrice = ticker.last;
+                        // If price is below entry, likely SL hit
+                        slFilled = true;
+                        slFillPrice = currentPrice;
+                        console.log(`[${timestamp}] 🔍 No open orders for ${pos.symbol} — assuming SL triggered at ~$${currentPrice.toFixed(2)}`);
+                    } catch (err) {
+                        // skip
+                    }
+                }
+            }
+
+            // Handle TP fill: cancel SL, close position as win
+            if (tpFilled) {
+                console.log(`[${timestamp}] 🎯 TAKE-PROFIT FILLED: ${pos.symbol} @ $${tpFillPrice?.toFixed(2)}`);
+                
+                // Cancel the stop-loss if it's still open
+                if (stopOrderId && openOrderIds.has(stopOrderId)) {
+                    try {
+                        await exchange.cancelOrder(stopOrderId, pos.symbol);
+                        console.log(`[${timestamp}]    🗑️  Cancelled orphan stop-loss order ${stopOrderId}`);
+                    } catch (err) {
+                        console.warn(`[${timestamp}]    ⚠️  Could not cancel SL ${stopOrderId}: ${err.message}`);
+                    }
+                }
+
+                // Also cancel any other open orders for this symbol (conditional close remnants)
+                for (const order of openOrders) {
+                    if (order.symbol === pos.symbol && order.id !== tpOrderId) {
+                        try {
+                            await exchange.cancelOrder(order.id, pos.symbol);
+                            console.log(`[${timestamp}]    🗑️  Cancelled extra order ${order.id} for ${pos.symbol}`);
+                        } catch (err) { /* ignore */ }
+                    }
+                }
+
+                // Close in data-logger
+                const profitLoss = (tpFillPrice - pos.entryPrice) * (pos.positionSize || 0);
+                const profitLossPercent = pos.entryPrice > 0 ? ((tpFillPrice - pos.entryPrice) / pos.entryPrice) * 100 : 0;
+                dataLogger.closeTrade(pos.id, tpFillPrice, 'TARGET_HIT', profitLoss, profitLossPercent);
+
+                positionsToRemove.push(pos.id);
+                console.log(`[${timestamp}]    💰 P&L: $${profitLoss.toFixed(2)} (${profitLossPercent.toFixed(2)}%)`);
+            }
+
+            // Handle SL fill: cancel TP, close position as loss
+            if (slFilled && !tpFilled) {
+                console.log(`[${timestamp}] 🛑 STOP-LOSS FILLED: ${pos.symbol} @ $${slFillPrice?.toFixed(2)}`);
+
+                // Cancel the take-profit if it's still open
+                if (tpOrderId && openOrderIds.has(tpOrderId)) {
+                    try {
+                        await exchange.cancelOrder(tpOrderId, pos.symbol);
+                        console.log(`[${timestamp}]    🗑️  Cancelled orphan take-profit order ${tpOrderId}`);
+                    } catch (err) {
+                        console.warn(`[${timestamp}]    ⚠️  Could not cancel TP ${tpOrderId}: ${err.message}`);
+                    }
+                }
+
+                // Also cancel any other open orders for this symbol
+                for (const order of openOrders) {
+                    if (order.symbol === pos.symbol && order.id !== stopOrderId) {
+                        try {
+                            await exchange.cancelOrder(order.id, pos.symbol);
+                            console.log(`[${timestamp}]    🗑️  Cancelled extra order ${order.id} for ${pos.symbol}`);
+                        } catch (err) { /* ignore */ }
+                    }
+                }
+
+                // Close in data-logger
+                const profitLoss = (slFillPrice - pos.entryPrice) * (pos.positionSize || 0);
+                const profitLossPercent = pos.entryPrice > 0 ? ((slFillPrice - pos.entryPrice) / pos.entryPrice) * 100 : 0;
+                dataLogger.closeTrade(pos.id, slFillPrice, 'STOP_HIT', profitLoss, profitLossPercent);
+
+                positionsToRemove.push(pos.id);
+                console.log(`[${timestamp}]    💸 P&L: $${profitLoss.toFixed(2)} (${profitLossPercent.toFixed(2)}%)`);
+            }
+
+            // Check if TP is missing but position still open (failed TP placement)
+            if (!tpFilled && !slFilled && tpOrderId === null && pos.targetPrice && !pos.synced) {
+                console.log(`[${timestamp}] ⚠️  ${pos.symbol} has no TP order — attempting to place one...`);
+                try {
+                    await exchange.loadMarkets();
+                    const market = exchange.market(pos.symbol);
+                    const balance = await exchange.fetchBalance();
+                    const base = market.base;
+                    const freeBase = balance.free?.[base] ?? 0;
+                    const minAmount = market.limits?.amount?.min || 0;
+
+                    if (freeBase > minAmount) {
+                        const tpQty = parseFloat(exchange.amountToPrecision(pos.symbol, freeBase));
+                        const tpTrigger = parseFloat(exchange.priceToPrecision(pos.symbol, pos.targetPrice));
+                        const tpLimitRaw = tpTrigger * 0.997;
+                        const tpLimit = parseFloat(exchange.priceToPrecision(pos.symbol, tpLimitRaw));
+
+                        const tpOrder = await exchange.createOrder(
+                            pos.symbol, 'take-profit-limit', 'sell', tpQty, tpTrigger, { price2: tpLimit }
+                        );
+                        pos.krakenOrderIds.tpOrderId = tpOrder.id;
+                        dataLogger.updateTradeOrders(pos.id, { tpOrderId: tpOrder.id });
+                        console.log(`[${timestamp}]    🎯 TP placed: trigger=$${tpTrigger}, limit=$${tpLimit} (ID: ${tpOrder.id})`);
+                    }
+                } catch (err) {
+                    console.warn(`[${timestamp}]    ⚠️  TP retry failed: ${err.message}`);
+                }
+            }
+        }
+
+        // Remove closed positions from position manager
+        if (positionsToRemove.length > 0) {
+            positionManager.positions = positionManager.positions.filter(p => !positionsToRemove.includes(p.id));
+
+            // Update balance from Kraken
+            try {
+                const balance = await exchange.fetchBalance();
+                const usdBalance = balance?.USD?.free ?? 0;
+                positionManager.accountBalance = usdBalance;
+                dataLogger.updateStats({
+                    currentBalance: usdBalance,
+                    availableBalance: usdBalance,
+                    openPositions: positionManager.positions.length
+                });
+                console.log(`[${timestamp}] 💰 Updated balance: $${usdBalance.toFixed(2)} | Open positions: ${positionManager.positions.length}`);
+            } catch (err) {
+                console.warn(`[${timestamp}] ⚠️  Balance update failed: ${err.message}`);
+            }
+        }
+    } catch (err) {
+        console.error(`[${timestamp}] ❌ Reconciliation error: ${err.message}`);
+    }
 }
 
 async function runProductionBot() {
@@ -197,6 +449,7 @@ async function runProductionBot() {
     let checkCounter = 0;
     const MODE_CHECK_INTERVAL = 30; // Check for mode changes every 30 iterations
     const COMMAND_CHECK_INTERVAL = 5; // Check for commands more frequently
+    const RECONCILE_INTERVAL_MS = 60000; // Reconcile Kraken orders every 60 seconds
 
     console.log('⏸️  Bot initialized but STOPPED. Click "Start Bot" in dashboard to begin trading.\n');
 
@@ -269,6 +522,13 @@ async function runProductionBot() {
                 }
             }
             
+            // Reconcile Kraken orders every 60 seconds (detect SL/TP fills, cancel orphans)
+            const now = Date.now();
+            if (botState.executionMode === 'LIVE' && (now - botState.lastReconcileTime) > RECONCILE_INTERVAL_MS) {
+                botState.lastReconcileTime = now;
+                await reconcileKrakenOrders(exchange, positionManager);
+            }
+
             // Fetch fresh data
             const ohlcvDataMap = {};
             for (const symbol of PRODUCTION_CONFIG.tradingSymbols) {
@@ -323,8 +583,11 @@ async function runProductionBot() {
                             });
 
                             // Attempt entry
+                            const existingOnSymbol = positionManager.positions.find(p => p.symbol === symbol);
                             const openPositions = positionManager.positions.length;
-                            if (openPositions < PRODUCTION_CONFIG.maxPositions) {
+                            if (existingOnSymbol) {
+                                // Already have a position on this symbol, skip
+                            } else if (openPositions < PRODUCTION_CONFIG.maxPositions) {
                                 // Calculate ATR for stop/target
                                 const atrData = calculateVolatility(ohlcv, 14);
                                 const atr = atrData.atr || (currentPrice * 0.01); // Fallback to 1% if ATR fails
@@ -369,6 +632,13 @@ async function runProductionBot() {
                                             });
                                             
                                             if (tradeResponse.data.success) {
+                                                // Store Kraken order IDs on the position for reconciliation
+                                                result.trade.krakenOrderIds = {
+                                                    entryOrderId: tradeResponse.data.order?.id || null,
+                                                    stopOrderId: null,  // Conditional close — tracked via symbol
+                                                    tpOrderId: tradeResponse.data.takeProfit?.id || null
+                                                };
+
                                                 console.log(`[${timestamp}] 🔴 LIVE TRADE EXECUTED`);
                                                 console.log(`   Entry Order ID: ${tradeResponse.data.order?.id || 'N/A'}`);
                                                 const condClose = tradeResponse.data.order?.conditionalClose;
@@ -404,13 +674,16 @@ async function runProductionBot() {
                                     }
 
                                     dataLogger.logTrade({
+                                        id: result.trade.id,
                                         symbol,
                                         signal: analysis.finalSignal,
+                                        entryTime: new Date(),
                                         entryPrice: result.trade.entryPrice,
                                         stopPrice: result.trade.stopPrice,
                                         targetPrice: result.trade.targetPrice,
                                         confidence: analysis.confidence,
-                                        positionSize: result.trade.positionSize
+                                        positionSize: result.trade.positionSize,
+                                        krakenOrderIds: result.trade.krakenOrderIds || null
                                     });
 
                                     botState.tradesThisSession++;
@@ -421,16 +694,27 @@ async function runProductionBot() {
                         botState.lastCandleTimeMap[symbol] = currentCandleTime;
                     }
 
-                    // Check exit signals
-                    const exitSignals = positionManager.checkExitSignals(currentPrice);
-                    for (const exitTrade of exitSignals) {
-                        if (exitTrade.symbol === symbol) {
-                            console.log(`[${timestamp}] 🎯 POSITION CLOSED`);
-                            console.log(`   Symbol: ${symbol}`);
-                            console.log(`   Exit Price: $${(currentPrice || 0).toFixed(2)}`);
-                            console.log(`   P&L: $${(exitTrade.profit || 0).toFixed(2)} (${((exitTrade.profitPercent || 0) * 100).toFixed(2)}%)\n`);
+                    // Check exit signals (simulated mode only — live uses Kraken reconciliation)
+                    if (botState.executionMode !== 'LIVE') {
+                        const exitSignals = positionManager.checkExitSignals(currentPrice);
+                        for (const exitTrade of exitSignals) {
+                            if (exitTrade.trade.symbol === symbol) {
+                                const closedResult = positionManager.closePosition(exitTrade.tradeId, currentPrice);
+                                if (closedResult.success) {
+                                    console.log(`[${timestamp}] 🎯 POSITION CLOSED (SIMULATED)`);
+                                    console.log(`   Symbol: ${symbol}`);
+                                    console.log(`   Exit Price: $${(currentPrice || 0).toFixed(2)}`);
+                                    console.log(`   P&L: $${closedResult.trade.profitLoss.toFixed(2)} (${closedResult.trade.profitLossPercent.toFixed(2)}%)\n`);
 
-                            dataLogger.closeTrade(exitTrade.tradeId, currentPrice);
+                                    dataLogger.closeTrade(
+                                        exitTrade.tradeId,
+                                        currentPrice,
+                                        exitTrade.reason,
+                                        closedResult.trade.profitLoss,
+                                        closedResult.trade.profitLossPercent
+                                    );
+                                }
+                            }
                         }
                     }
                 } catch (symbolErr) {

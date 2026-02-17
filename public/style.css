@@ -400,6 +400,123 @@ header {
     color: var(--danger);
 }
 
+/* Coin Holdings Section */
+.coin-holdings-section {
+    margin-bottom: 30px;
+}
+
+.coin-holdings-section .section-title {
+    justify-content: space-between;
+}
+
+.holdings-total {
+    font-size: 0.8em;
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.coin-holdings-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+@media (max-width: 768px) {
+    .coin-holdings-row {
+        flex-wrap: wrap;
+    }
+    .coin-card {
+        min-width: 140px !important;
+        flex: 1 1 140px !important;
+    }
+}
+
+.coin-card {
+    background: rgba(30, 32, 45, 0.7);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    text-align: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    flex: 1 0 0;
+    min-width: 150px;
+}
+
+.coin-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.coin-name {
+    font-size: 1.3em;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    color: var(--accent);
+}
+
+.coin-amount {
+    font-size: 0.82em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.coin-value {
+    font-size: 1.15em;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.coin-price {
+    font-size: 0.78em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.coin-trend {
+    font-size: 0.78em;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    display: inline-block;
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.coin-trend.trend-bull {
+    color: var(--success);
+    background: rgba(0, 255, 157, 0.1);
+}
+
+.coin-trend.trend-bear {
+    color: var(--danger);
+    background: rgba(255, 46, 99, 0.1);
+}
+
+.btn-sell {
+    background: rgba(255, 46, 99, 0.12);
+    border: 1px solid rgba(255, 46, 99, 0.4);
+    color: var(--danger);
+    padding: 5px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.8em;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.btn-sell:hover {
+    background: var(--danger);
+    color: white;
+    box-shadow: 0 0 12px rgba(255, 46, 99, 0.35);
+}
+
 /* Cards & Tables */
 .section {
     background: var(--card-bg);

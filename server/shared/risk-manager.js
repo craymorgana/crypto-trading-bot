@@ -123,6 +123,12 @@ class PositionManager {
             return { error: `Max positions (${this.config.maxPositions}) reached` };
         }
 
+        // Check if we already have an open position on this symbol
+        const existingPosition = this.positions.find(p => p.symbol === tradeData.symbol);
+        if (existingPosition) {
+            return { error: `Already have an open position on ${tradeData.symbol}` };
+        }
+
         // Check current drawdown
         const currentDrawdown = (this.initialBalance - this.accountBalance) / this.initialBalance;
         if (currentDrawdown > this.config.maxDrawdown) {

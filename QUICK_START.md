@@ -1,5 +1,7 @@
 # ⚡ QUICK START GUIDE
 
+![HomeScreen](Screenshot.png)
+
 ## 🚀 Launch Bot
 
 ```bash
